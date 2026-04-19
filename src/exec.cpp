@@ -13,23 +13,24 @@
 
 using namespace std;
 
-// Externs to link with the globals declared in websockets.cpp
-extern std::mutex g_ui_simMtx;
-extern bool g_ui_targetUpdated;
-extern double g_ui_targetLat;
-extern double g_ui_targetLon;
-extern bool g_ui_paramsUpdated;
-extern double g_ui_speed;
-extern double g_ui_batteryDrain;
-extern std::vector<Obstacle*> g_ui_newObstacles;
+struct CommandEvent {
+    std::string type;
+    std::string targetId;
+    double lat, lon, radius, speed, drain;
+    std::string groupId;
+};
 
-struct SpawnDroneEvent { double lat; double lon; };
-extern std::vector<SpawnDroneEvent> g_ui_spawnDrones;
+extern std::mutex g_ui_simMtx;
+extern std::vector<CommandEvent> g_ui_commands;
+
+struct ExternalTelemetry { std::string id; std::string groupId; double lat; double lon; double alt; double heading; double battery; };
+extern std::vector<ExternalTelemetry> g_ui_externalTelemetry;
 
 struct DroneContext {
     UAV uav;
     Coordinate startCoord;
     Coordinate targetCoord;
+    double assignedSpeed = 0.25;
 };
 
 // Class to manage random obstacle generation
@@ -75,8 +76,8 @@ int main() {
 
     // Phase 5: Swarm Architecture initialization
     std::map<std::string, DroneContext> swarm;
-    // Give the Alpha drone a snappy turn rate of 90.0 deg/s
-    swarm.insert({"alpha", { UAV(startCoord, 45.0, 0.25, 90.0), startCoord, targetCoord }});
+    swarm.insert({"alpha_1", { UAV(startCoord, 45.0, 0.25, 90.0, "alpha"), startCoord, targetCoord, 0.25 }});
+    swarm.insert({"bravo_1", { UAV(Coordinate(26.88, 75.80, 0.0), 0.0, 0.25, 90.0, "bravo"), Coordinate(26.88, 75.80, 0.0), targetCoord, 0.25 }});
 
     cout << "Starting Simulation Loop..." << endl;
 
@@ -91,42 +92,53 @@ int main() {
         // 0. Check for UI Target Updates from WebSocket
         {
             std::lock_guard<std::mutex> lock(g_ui_simMtx);
-            if (g_ui_targetUpdated) {
-                targetCoord = Coordinate(g_ui_targetLat, g_ui_targetLon, 0.0);
-                for (auto& pair : swarm) {
-                    pair.second.targetCoord = targetCoord;
-                }
-                g_ui_targetUpdated = false;
-                cout << ">>> NEW TARGET ASSIGNED: " << g_ui_targetLat << ", " << g_ui_targetLon << " <<<" << endl;
-            }
-            if (g_ui_paramsUpdated) {
-                for (auto& pair : swarm) {
-                    pair.second.uav.speed = g_ui_speed;
-                    pair.second.uav.batteryDrainRate = g_ui_batteryDrain;
-                }
-                g_ui_paramsUpdated = false;
-            }
-            if (!g_ui_newObstacles.empty()) {
-                for (auto* obs : g_ui_newObstacles) {
+            for (const auto& cmd : g_ui_commands) {
+                if (cmd.type == "target") {
+                    Coordinate tgt(cmd.lat, cmd.lon, 0.0);
+                    for (auto& pair : swarm) {
+                        if (cmd.targetId == "all" || pair.second.uav.groupId == cmd.targetId || pair.first == cmd.targetId) {
+                            pair.second.targetCoord = tgt;
+                        }
+                    }
+                } else if (cmd.type == "control") {
+                    for (auto& pair : swarm) {
+                        if (cmd.targetId == "all" || pair.second.uav.groupId == cmd.targetId || pair.first == cmd.targetId) {
+                            if (cmd.speed >= 0.0) pair.second.assignedSpeed = cmd.speed;
+                            if (cmd.drain >= 0.0) pair.second.uav.batteryDrainRate = cmd.drain;
+                        }
+                    }
+                } else if (cmd.type == "spawn") {
+                    Coordinate spawnCoord(cmd.lat, cmd.lon, 0.0);
+                    std::string id = "drone_" + to_string(swarm.size() + 1);
+                    Coordinate initialTarget = spawnCoord;
+                    for (const auto& pair : swarm) {
+                        if (pair.second.uav.groupId == cmd.groupId) {
+                            initialTarget = pair.second.targetCoord;
+                            break;
+                        }
+                    }
+                    swarm.insert({id, { UAV(spawnCoord, 0.0, 0.25, 90.0, cmd.groupId), spawnCoord, initialTarget, 0.25 }});
+                    cout << ">>> NEW DRONE SPAWNED: " << id << " IN GROUP " << cmd.groupId << " <<<" << endl;
+                } else if (cmd.type == "obstacle") {
+                    Obstacle* obs = new StaticObstacle(Coordinate(cmd.lat, cmd.lon, 0.0), cmd.radius, cmd.groupId);
                     obstacles.push_back(obs);
                     server.broadcast(SimulationServer::formatObstacleState(
-                        obs->isDynamic ? "dynamic" : "static",
-                        "obs_" + to_string(obstacles.size()),
-                        obs->position.latitude, obs->position.longitude, obs->radius, obs->isDynamic
+                        "static", "obs_" + to_string(obstacles.size()), cmd.lat, cmd.lon, cmd.radius, false, cmd.groupId
                     ));
-                    cout << ">>> UI ASSIGNED OBSTACLE SPAWNED <<<" << endl;
                 }
-                g_ui_newObstacles.clear();
             }
-            if (!g_ui_spawnDrones.empty()) {
-                for (auto& spawn : g_ui_spawnDrones) {
-                    Coordinate spawnCoord(spawn.lat, spawn.lon, 0.0);
-                    std::string id = "drone_" + to_string(swarm.size() + 1);
-                    swarm.insert({id, { UAV(spawnCoord, 0.0, g_ui_speed, 90.0), spawnCoord, swarm.at("alpha").targetCoord }});
-                    cout << ">>> NEW DRONE SPAWNED: " << id << " <<<" << endl;
-                }
-                g_ui_spawnDrones.clear();
+            g_ui_commands.clear();
+            
+            // Phase 4: Forward external MAVLink/real-world drones telemetry
+            for (const auto& ext : g_ui_externalTelemetry) {
+                string stateJson = SimulationServer::formatUAVState(
+                    ext.id, ext.groupId, ext.lat, ext.lon, ext.alt, ext.heading, ext.battery,
+                    ext.lat, ext.lon, ext.lat, ext.lon // Real drones just report current pos as start/target
+                );
+                
+                server.broadcast(stateJson);
             }
+            g_ui_externalTelemetry.clear();
         }
 
         // 1. Process Swarm Updates
@@ -135,13 +147,22 @@ int main() {
             auto& uav = ctx.uav;
 
             double distToTarget = uav.position.distanceTo(ctx.targetCoord);
-            if (distToTarget >= 0.02) { 
+            double frameTravel = std::max(ctx.assignedSpeed, uav.currentSpeed) * deltaTime;
+            
+            // Corrected Velocity Tracking - Enforce perfect arrival without overshoot
+            if (distToTarget <= frameTravel * 1.5) { 
+                uav.position = ctx.targetCoord;
+                uav.targetSpeed = 0.0;
+                uav.currentSpeed = 0.0;
+            } else {
                 double targetHeading = uav.position.bearingTo(ctx.targetCoord);
 
                 for (auto* obs : obstacles) {
-                    if (avoidance.isObstacleInPath(uav.position, targetHeading, obs)) {
-                        targetHeading = avoidance.recalculateHeading(uav.position, targetHeading, obs);
-                        break; 
+                    if (obs->groupId.empty() || obs->groupId == uav.groupId) {
+                        if (avoidance.isObstacleInPath(uav.position, targetHeading, obs)) {
+                            targetHeading = avoidance.recalculateHeading(uav.position, targetHeading, obs);
+                            break; 
+                        }
                     }
                 }
 
@@ -151,20 +172,17 @@ int main() {
                 if (diff > 180.0) diff = 360.0 - diff;
 
                 if (diff > 25.0) {
-                    uav.speed = 0.0; // Halt to execute turn
+                    uav.targetSpeed = 0.0; // Halt to execute turn
                 } else {
-                    uav.speed = g_ui_speed; // Clear to fly
+                    uav.targetSpeed = ctx.assignedSpeed; // Clear to fly
                 }
 
                 uav.update(deltaTime, 0.0);
-            } else {
-                uav.position = ctx.targetCoord;
-                uav.speed = 0.0;
             }
 
             // Broadcast state via WebSocket
             string stateJson = SimulationServer::formatUAVState(
-                pair.first,
+                pair.first, uav.groupId,
                 uav.position.latitude, 
                 uav.position.longitude, 
                 0.0, 

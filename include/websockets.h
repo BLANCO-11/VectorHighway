@@ -26,11 +26,11 @@ public:
 
     // Utility to create a simple JSON string for UAV state
     // Format: {"type": "uav_update", "lat": 0.0, "lon": 0.0, "alt": 0.0, "heading": 0.0, "battery": 100.0, "startLat": 0.0, "startLon": 0.0, "targetLat": 0.0, "targetLon": 0.0}
-    static std::string formatUAVState(const std::string& id, double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon);
+    static std::string formatUAVState(const std::string& id, const std::string& groupId, double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon);
 
     // Utility to create a JSON string for obstacle updates
     // Format: {"type": "obstacle_update", "id": "id", "lat": 0.0, "lon": 0.0, "radius": 0.0, "dynamic": true/false}
-    static std::string formatObstacleState(const std::string& type, const std::string& id, double lat, double lon, double rad, bool dynamic);
+    static std::string formatObstacleState(const std::string& type, const std::string& id, double lat, double lon, double rad, bool dynamic, const std::string& groupId);
 };
 
 /**
@@ -44,6 +44,6 @@ public:
     void broadcast(const std::string& message) override;
     void handleCommand(const std::string& commandJson) override;
 
-    static std::string formatUAVState(const std::string& id, double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon);
-    static std::string formatObstacleState(const std::string& type, const std::string& id, double lat, double lon, double rad, bool dynamic);
+    static std::string formatUAVState(const std::string& id, const std::string& groupId, double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon);
+    static std::string formatObstacleState(const std::string& type, const std::string& id, double lat, double lon, double rad, bool dynamic, const std::string& groupId);
 };

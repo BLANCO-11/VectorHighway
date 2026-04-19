@@ -1,6 +1,6 @@
 # UAV Simulator & Fleet Management Blueprint
 
-## Phase 1: Engine Physics & Kinematics Correctness (Current Focus)
+## Phase 1: Engine Physics & Kinematics Correctness
 **Objective:** Ensure the simulation behaves realistically in 3D space.
 
 1. **Target Arrival Logic:** Skip kinematic updates when the distance to the target is negligible (fixes the drone flying to the North Pole when bearing calculations break down at 0 distance).
@@ -41,8 +41,33 @@
    * Build a bridge for real drones (PX4/ArduPilot). The real drone connects via 4G/LTE and publishes its actual GPS and battery state to the MQTT broker.
    * **Hybrid Reality:** The UI dashboard will display both simulated C++ drones and real-world physical drones seamlessly on the same 3D globe.
 
+## Phase 5: Advanced Autonomous Navigation & Pathfinding (Current Focus)
+**Objective:** Give drones intelligent, obstacle-aware routing and multi-waypoint capabilities.
+
+1. **Global Pathfinding & Virtual Checkpoints:**
+   * Replace basic local avoidance (which causes jittering against No-Fly Zones) with a robust global pathfinding algorithm (e.g., Grid-based A* or Voronoi diagrams).
+   * Drones will calculate an entire route of "virtual checkpoints" around obstacles before departing and dynamically re-evaluate the path if a new obstruction is placed mid-flight.
+2. **Multi-Destination Routing:**
+   * Expand the target system from a single coordinate to a `std::vector<Coordinate>` queue.
+   * Provide routing strategies via the UI: **Sequential** (visit in the order clicked) or **Optimized** (Closest-first / Traveling Salesperson heuristic).
+3. **Charging Stations:**
+   * Add another component called charging stations, if a drone is low on battery it can visit the nearby charging station, a drone should always priorities fuel if its on low battery and visit station before destiny. Charging stations can be shared across all swarms or groups.
+
+
+## Phase 6: UI Refinements & Interactivity
+**Objective:** Polish the visual experience, fix render bugs, and improve user control.
+
+1. **Drone Orientation & Trails Fix:**
+   * Update the drone icon to an explicit directional arrow (e.g., `<ArrowUp />`) and align its 0-degree baseline perfectly with the simulation's North heading.
+   * Fix the historical trail rendering logic to ensure path lines correctly spawn and persist smoothly behind the drones without disappearing.
+2. **Right-Click Entity Management:**
+   * Implement right-click context/raycasting on 3D entities (Drones, Waypoints, No-Fly Zones) to allow instantly deleting them from the simulation.
+3. **UX Suggestions (Bonus Additions):**
+   * **Route Preview:** Draw the drone's calculated "Virtual Checkpoint" path as a faint, dotted line on the globe so the user can verify its avoidance logic. Keep in mind the globe curvature and diameter to draw lines correctly.
+   * **ETA Display:** Add an Estimated Time of Arrival to the Telemetry HUD based on the new checkpoint route distance.
+
 ## Next Action Items
-1. Add `@react-three/drei` `<Html>` markers for the drone and obstacles.
-2. Update line rendering in the canvas to use `Vector3.lerp` and spherical interpolation so lines curve around the Earth nicely.
-3. Implement `lucide-react` for beautiful iconography in the HUD.
-4. Build the UI control panel for spawning custom drones, targets, and no-fly zones/obstacles interactively.
+1. Fix the drone SVG icon orientation (`<ArrowUp />`) and debug the trail history rendering in the React Three Fiber canvas.
+2. Implement Right-Click raycasting logic in React to send `delete_entity` WebSockets commands.
+3. Refactor C++ `UAV` and `DroneContext` classes to hold a `std::vector<Coordinate>` for multi-destination tracking.
+4. Implement A* node generation around No-Fly Zones in C++ to output virtual checkpoints instead of using local steering.

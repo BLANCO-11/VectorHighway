@@ -16,16 +16,17 @@ using json = nlohmann::json;
 typedef websocketpp::server<websocketpp::config::asio> server;
 
 // Global thread-safe state to pass data to the main simulation thread
+struct CommandEvent {
+    std::string type;
+    std::string targetId;
+    double lat, lon, radius, speed, drain;
+    std::string groupId;
+};
+
 std::mutex g_ui_simMtx;
-bool g_ui_targetUpdated = false;
-double g_ui_targetLat = 0.0;
-double g_ui_targetLon = 0.0;
-bool g_ui_paramsUpdated = false;
-double g_ui_speed = 0.25;
-double g_ui_batteryDrain = 0.01;
-std::vector<Obstacle*> g_ui_newObstacles;
-struct SpawnDroneEvent { double lat; double lon; };
-std::vector<SpawnDroneEvent> g_ui_spawnDrones;
+std::vector<CommandEvent> g_ui_commands;
+struct ExternalTelemetry { std::string id; std::string groupId; double lat; double lon; double alt; double heading; double battery; };
+std::vector<ExternalTelemetry> g_ui_externalTelemetry;
 
 class WSServerImpl {
 public:
@@ -55,35 +56,48 @@ public:
             std::cout << "[WebSocket] Received command: " << payload << std::endl;
             try {
                 auto j = json::parse(payload);
-                if (j.contains("type")) {
-                    std::string type = j["type"];
-                    // Check if the user clicked a new target on the Globe
-                    if (type == "set_target") {
+                
+                // Phase 4: Pub/Sub routing emulation
+                if (j.contains("topic")) {
+                    std::string topic = j["topic"];
+                    auto msgPayload = j["payload"];
+                    
+                    if (topic.find("cmd/fleet/") == 0 && topic.find("/target") != std::string::npos) {
                         std::lock_guard<std::mutex> lock(g_ui_simMtx);
-                        g_ui_targetLat = j["lat"];
-                        g_ui_targetLon = j["lon"];
-                        g_ui_targetUpdated = true;
+                        size_t firstSlash = topic.find('/', 10);
+                        std::string id = topic.substr(10, firstSlash - 10);
+                        g_ui_commands.push_back({"target", id, msgPayload["lat"], msgPayload["lon"], 0.0, 0.0, 0.0, ""});
                     }
-                    else if (type == "control_update") {
+                    else if (topic.find("cmd/fleet/") == 0 && topic.find("/control") != std::string::npos) {
                         std::lock_guard<std::mutex> lock(g_ui_simMtx);
-                        if (j.contains("speed")) {
-                            g_ui_speed = j["speed"];
-                        }
-                        if (j.contains("batteryDrain")) {
-                            g_ui_batteryDrain = j["batteryDrain"];
-                        }
-                        g_ui_paramsUpdated = true;
+                        size_t firstSlash = topic.find('/', 10);
+                        std::string id = topic.substr(10, firstSlash - 10);
+                        double speed = msgPayload.contains("speed") ? msgPayload["speed"].get<double>() : -1;
+                        double drain = msgPayload.contains("batteryDrain") ? msgPayload["batteryDrain"].get<double>() : -1;
+                        g_ui_commands.push_back({"control", id, 0, 0, 0, speed, drain, ""});
                     }
-                    else if (type == "add_obstacle") {
+                    else if (topic == "cmd/environment/obstacle") {
                         std::lock_guard<std::mutex> lock(g_ui_simMtx);
-                        double lat = j["lat"];
-                        double lon = j["lon"];
-                        double radius = j.contains("radius") ? j["radius"].get<double>() : 2.0;
-                        g_ui_newObstacles.push_back(new StaticObstacle(Coordinate(lat, lon, 0.0), radius));
+                        double radius = msgPayload.contains("radius") ? msgPayload["radius"].get<double>() : 2.0;
+                        std::string groupId = msgPayload.contains("groupId") ? msgPayload["groupId"].get<std::string>() : "";
+                        g_ui_commands.push_back({"obstacle", "", msgPayload["lat"], msgPayload["lon"], radius, 0, 0, groupId});
                     }
-                    else if (type == "spawn_drone") {
+                    else if (topic == "cmd/fleet/spawn") {
                         std::lock_guard<std::mutex> lock(g_ui_simMtx);
-                        g_ui_spawnDrones.push_back({j["lat"].get<double>(), j["lon"].get<double>()});
+                        std::string groupId = msgPayload.contains("groupId") ? msgPayload["groupId"].get<std::string>() : "alpha";
+                        g_ui_commands.push_back({"spawn", "", msgPayload["lat"], msgPayload["lon"], 0, 0, 0, groupId});
+                    }
+                    else if (topic.find("telemetry/external/") == 0) {
+                        std::string id = topic.substr(19);
+                        std::lock_guard<std::mutex> lock(g_ui_simMtx);
+                        g_ui_externalTelemetry.push_back({
+                            id, msgPayload.contains("groupId") ? msgPayload["groupId"].get<std::string>() : "alpha",
+                            msgPayload["lat"].get<double>(),
+                            msgPayload["lon"].get<double>(),
+                            msgPayload.contains("alt") ? msgPayload["alt"].get<double>() : 0.0,
+                            msgPayload.contains("heading") ? msgPayload["heading"].get<double>() : 0.0,
+                            msgPayload.contains("battery") ? msgPayload["battery"].get<double>() : 100.0
+                        });
                     }
                 }
             } catch (const std::exception& e) {
@@ -140,10 +154,11 @@ void MockSimulationServer::handleCommand(const std::string& commandJson) {
     std::cout << "[WebSocket Server] Command Received: " << commandJson << std::endl;
 }
 
-std::string MockSimulationServer::formatUAVState(const std::string& id, double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon) {
+std::string MockSimulationServer::formatUAVState(const std::string& id, const std::string& groupId, double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon) {
     std::stringstream ss;
     ss << "{\"type\": \"uav_update\", "
        << "\"id\": \"" << id << "\", "
+       << "\"groupId\": \"" << groupId << "\", "
        << "\"lat\": " << std::fixed << std::setprecision(6) << lat << ", "
        << "\"lon\": " << lon << ", "
        << "\"alt\": " << alt << ", "
@@ -156,10 +171,11 @@ std::string MockSimulationServer::formatUAVState(const std::string& id, double l
     return ss.str();
 }
 
-std::string MockSimulationServer::formatObstacleState(const std::string& type, const std::string& id, double lat, double lon, double rad, bool dynamic) {
+std::string MockSimulationServer::formatObstacleState(const std::string& type, const std::string& id, double lat, double lon, double rad, bool dynamic, const std::string& groupId) {
     std::stringstream ss;
     ss << "{\"type\": \"obstacle_update\", "
        << "\"id\": \"" << id << "\", "
+       << "\"groupId\": \"" << groupId << "\", "
        << "\"lat\": " << std::fixed << std::setprecision(6) << lat << ", "
        << "\"lon\": " << lon << ", "
        << "\"radius\": " << rad << ", "
@@ -167,10 +183,10 @@ std::string MockSimulationServer::formatObstacleState(const std::string& type, c
     return ss.str();
 }
 
-std::string SimulationServer::formatUAVState(const std::string& id, double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon) {
-    return MockSimulationServer::formatUAVState(id, lat, lon, alt, heading, battery, startLat, startLon, targetLat, targetLon);
+std::string SimulationServer::formatUAVState(const std::string& id, const std::string& groupId, double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon) {
+    return MockSimulationServer::formatUAVState(id, groupId, lat, lon, alt, heading, battery, startLat, startLon, targetLat, targetLon);
 }
 
-std::string SimulationServer::formatObstacleState(const std::string& type, const std::string& id, double lat, double lon, double rad, bool dynamic) {
-    return MockSimulationServer::formatObstacleState(type, id, lat, lon, rad, dynamic);
+std::string SimulationServer::formatObstacleState(const std::string& type, const std::string& id, double lat, double lon, double rad, bool dynamic, const std::string& groupId) {
+    return MockSimulationServer::formatObstacleState(type, id, lat, lon, rad, dynamic, groupId);
 }

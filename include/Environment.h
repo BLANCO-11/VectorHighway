@@ -48,9 +48,10 @@ public:
     Coordinate position;
     double radius; // Represents the size of the obstacle
     bool isDynamic;
+    std::string groupId; // Empy string implies global avoidance, otherwise group-specific
 
-    Obstacle(Coordinate pos, double rad, bool dynamic = false) 
-        : position(pos), radius(rad), isDynamic(dynamic) {}
+    Obstacle(Coordinate pos, double rad, bool dynamic = false, std::string gId = "") 
+        : position(pos), radius(rad), isDynamic(dynamic), groupId(gId) {}
     
     virtual ~Obstacle() = default;
     
@@ -63,8 +64,8 @@ public:
     double speed;
     double heading;
 
-    DynamicObstacle(Coordinate pos, double rad, double spd, double hdg)
-        : Obstacle(pos, rad, true), speed(spd), heading(hdg) {}
+    DynamicObstacle(Coordinate pos, double rad, double spd, double hdg, std::string gId = "")
+        : Obstacle(pos, rad, true, gId), speed(spd), heading(hdg) {}
 
     void updatePosition(double deltaTime) override {
         // Simple linear movement for demonstration
@@ -80,8 +81,8 @@ public:
 // Phase 2: Static Obstacle
 class StaticObstacle : public Obstacle {
 public:
-    StaticObstacle(Coordinate pos, double rad)
-        : Obstacle(pos, rad, false) {}
+    StaticObstacle(Coordinate pos, double rad, std::string gId = "")
+        : Obstacle(pos, rad, false, gId) {}
 
     void updatePosition(double deltaTime) override {
         // Static obstacles don't move
