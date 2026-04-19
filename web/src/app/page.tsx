@@ -5,6 +5,21 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import { useSimulationWebSocket, ObstacleState, UAVState } from '../useSimulationWebSocket';
+import { useTexture } from '@react-three/drei';
+
+const EARTH_RADIUS = 5;
+
+const getCartesian = (lat: number, lon: number, radius: number, alt: number = 0) => {
+  const phi = (90 - lat) * (Math.PI / 180);
+  const theta = (lon + 180) * (Math.PI / 180);
+  const r = radius + alt;
+
+  return new THREE.Vector3(
+    -(r * Math.sin(phi) * Math.cos(theta)),
+    r * Math.cos(phi),
+    r * Math.sin(phi) * Math.sin(theta)
+  );
+};
 
 interface ControlParams {
   speed: number;
@@ -15,33 +30,18 @@ interface ControlParams {
 
 // --- 3D Components ---
 
-function Earth({ onGlobeClick }: { onGlobeClick?: (lat: number, lon: number) => void }) {
-  const handleClick = (e: any) => {
-    e.stopPropagation();
-    const { x, y, z } = e.point;
-    const r = 5;
-    const phi = Math.acos(y / r);
-    const theta = Math.atan2(z, -x);
-    const lat = 90 - (phi * 180 / Math.PI);
-    const lon = (theta * 180 / Math.PI) - 180;
-    if (onGlobeClick) onGlobeClick(lat, lon);
-  };
-
+function Earth() {
+  const texture = useTexture('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg');
+  
   return (
-    <group>
-      <mesh onClick={handleClick}>
-        <sphereGeometry args={[5, 64, 64]} />
-        <meshStandardMaterial 
-          color="#1a3a5a" 
-          roughness={0.7}
-          metalness={0.2}
-        />
-      </mesh>
-      <mesh scale={[1.02, 1.02, 1.02]}>
-        <sphereGeometry args={[5, 64, 64]} />
-        <meshBasicMaterial color="#4488ff" transparent opacity={0.1} side={THREE.BackSide} />
-      </mesh>
-    </group>
+    <mesh>
+      <sphereGeometry args={[EARTH_RADIUS, 64, 64]} />
+      <meshStandardMaterial 
+        map={texture} 
+        roughness={0.7}
+        metalness={0.2}
+      />
+    </mesh>
   );
 }
 
@@ -81,14 +81,8 @@ function UAVMarker({ state }: { state: UAVState | null }) {
 
   useFrame(() => {
     if (meshRef.current && state) {
-      const phi = (90 - state.lat) * (Math.PI / 180);
-      const theta = (state.lon + 180) * (Math.PI / 180);
-
-      const x = -(5 + state.alt/1000) * Math.sin(phi) * Math.cos(theta);
-      const z = 5 * Math.sin(phi) * Math.sin(theta);
-      const y = 5 * Math.cos(phi);
-
-      meshRef.current.position.set(x, y, z);
+      const pos = getCartesian(state.lat, state.lon, EARTH_RADIUS, state.alt / 1000);
+      meshRef.current.position.copy(pos);
     }
   });
 
@@ -101,17 +95,37 @@ function UAVMarker({ state }: { state: UAVState | null }) {
   );
 }
 
+function ConnectionLines({ uavState }: { uavState: UAVState | null }) {
+  if (!uavState) return null;
+
+  const currentPos = getCartesian(uavState.lat, uavState.lon, EARTH_RADIUS, uavState.alt / 1000);
+  const targetPos = getCartesian(uavState.targetLat, uavState.targetLon, EARTH_RADIUS);
+  const startPos = getCartesian(uavState.startLat, uavState.startLon, EARTH_RADIUS);
+
+  return (
+    <group>
+      {/* Passive line: Start to current position */}
+      <line>
+        <bufferGeometry attach="geometry" setFromPoints={[startPos, currentPos]} />
+        <lineBasicMaterial attach="material" color="#4488ff" transparent opacity={0.3} />
+      </line>
+
+      {/* Active line: Current to target */}
+      <line>
+        <bufferGeometry attach="geometry" setFromPoints={[currentPos, targetPos]} />
+        <lineBasicMaterial attach="material" color="#00ff00" />
+      </line>
+    </group>
+  );
+}
+
 function ObstacleMarkers({ obstacles }: { obstacles: ObstacleState[] }) {
   return (
     <group>
       {obstacles.map(obs => {
-        const phi = (90 - obs.lat) * (Math.PI / 180);
-        const theta = (obs.lon + 180) * (Math.PI / 180);
-        const x = -5 * Math.sin(phi) * Math.cos(theta);
-        const z = 5 * Math.sin(phi) * Math.sin(theta);
-        const y = 5 * Math.cos(phi);
+        const pos = getCartesian(obs.lat, obs.lon, EARTH_RADIUS);
         return (
-          <mesh key={obs.id} position={[x, y, z]}>
+          <mesh key={obs.id} position={pos}>
             <sphereGeometry args={[0.08, 16, 16]} />
             <meshStandardMaterial color={obs.dynamic ? "#ff8800" : "#888888"} />
           </mesh>
@@ -156,7 +170,7 @@ export default function SimulatorPage() {
                 <span>{params.speed.toFixed(2)} km/s</span>
               </div>
               <input 
-                type="range" min="0" max="1" step="0.01" 
+                type="range" min="0" max="1000" step="0.01" 
                 value={params.speed}
                 onChange={(e) => handleParamChange('speed', parseFloat(e.target.value))}
                 className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
@@ -226,7 +240,8 @@ export default function SimulatorPage() {
           <pointLight position={[10, 10, 10]} intensity={1.5} />
           <spotLight position={[-10, 10, 10]} angle={0.15} penumbra={1} />
           <Stars radius={300} depth={60} count={20000} factor={7} saturation={0} fade speed={1} />
-          <Earth onGlobeClick={handleGlobeClick} />
+          <Earth />
+          <ConnectionLines uavState={uavState} />
           <UAVMarker state={uavState} />
           <ObstacleMarkers obstacles={obstacles} />
           <OrbitControls enablePan={false} minDistance={6} maxDistance={20} />
