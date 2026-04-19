@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 
 export interface UAVState {
+  id: string;
   lat: number;
   lon: number;
   alt: number;
@@ -12,17 +13,18 @@ export interface UAVState {
   targetLon: number;
 }
 
-export interface ObstacleState {
+export interface ChargingStationState {
   id: string;
   lat: number;
   lon: number;
-  radius: number;
-  dynamic: boolean;
+  name: string;
+  chargingRate: number;
 }
 
 export const useSimulationWebSocket = (url: string = 'ws://localhost:8080') => {
-  const [uavState, setUavState] = useState<UAVState | null>(null);
+  const [uavs, setUavs] = useState<Record<string, UAVState>>({});
   const [obstacles, setObstacles] = useState<Record<string, ObstacleState>>({});
+  const [chargingStations, setChargingStations] = useState<Record<string, ChargingStationState>>({});
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -46,19 +48,28 @@ export const useSimulationWebSocket = (url: string = 'ws://localhost:8080') => {
         const data = JSON.parse(event.data);
 
         if (data.type === 'uav_update') {
-          setUavState({
-            lat: data.lat,
-            lon: data.lon,
-            alt: data.alt,
-            heading: data.heading,
-            battery: data.battery,
-            startLat: data.startLat,
-            startLon: data.startLon,
-            targetLat: data.targetLat,
-            targetLon: data.targetLon,
-          });
+          setUavs((prev) => ({
+            ...prev,
+            [data.id]: {
+              id: data.id,
+              lat: data.lat,
+              lon: data.lon,
+              alt: data.alt,
+              heading: data.heading,
+              battery: data.battery,
+              startLat: data.startLat,
+              startLon: data.startLon,
+              targetLat: data.targetLat,
+              targetLon: data.targetLon,
+            }
+          }));
         } else if (data.type === 'obstacle_update') {
           setObstacles((prev) => ({
+            ...prev,
+            [data.id]: data,
+          }));
+        } else if (data.type === 'charging_station_update') {
+          setChargingStations((prev) => ({
             ...prev,
             [data.id]: data,
           }));
@@ -75,8 +86,9 @@ export const useSimulationWebSocket = (url: string = 'ws://localhost:8080') => {
 
   // Return obstacles as an array for easier rendering in 3D/UI
   return { 
-    uavState, 
+    uavs: Object.values(uavs), 
     obstacles: Object.values(obstacles), 
+    chargingStations: Object.values(chargingStations),
     isConnected,
     sendMessage: (msg: string) => wsRef.current?.send(msg) 
   };

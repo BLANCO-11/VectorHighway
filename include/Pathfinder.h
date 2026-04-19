@@ -115,22 +115,22 @@ public:
             diff = 360.0 - diff;
         }
 
+        if (distance < obs->radius + 0.5) return true; // Emergency evasion if too close
+
         return diff <= (fieldOfView / 2.0);
     }
 
     // Returns an evasive heading away from the obstacle
-    double recalculateHeading(const Coordinate& hostPos, double hostHeading, const Obstacle* obs) {
+    double recalculateHeading(const Coordinate& hostPos, double currentHeading, const Obstacle* obs) {
         double bearing = hostPos.bearingTo(obs->position);
-        double diff = std::fmod(hostHeading - bearing + 360.0, 360.0);
+        double diff = std::fmod(currentHeading - bearing + 360.0, 360.0);
         
         if (diff < 180.0) {
-            // Obstacle is to the right, steer left
-            std::cout << "[Local Avoidance] Threat detected at bearing " << bearing << ". Steering left 45 deg." << std::endl;
-            return std::fmod(hostHeading - 45.0 + 360.0, 360.0); 
+            // Obstacle is to the right, steer 90 degrees left of bearing
+            return std::fmod(bearing - 90.0 + 360.0, 360.0); 
         } else {
-            // Obstacle is to the left, steer right
-            std::cout << "[Local Avoidance] Threat detected at bearing " << bearing << ". Steering right 45 deg." << std::endl;
-            return std::fmod(hostHeading + 45.0, 360.0);
+            // Obstacle is to the left, steer 90 degrees right of bearing
+            return std::fmod(bearing + 90.0, 360.0);
         }
     }
 };

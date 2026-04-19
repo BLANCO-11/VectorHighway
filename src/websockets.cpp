@@ -9,6 +9,7 @@
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 #include <nlohmann/json.hpp>
+#include "../include/Environment.h" // For Obstacle
 
 using json = nlohmann::json;
 
@@ -19,6 +20,12 @@ std::mutex g_ui_simMtx;
 bool g_ui_targetUpdated = false;
 double g_ui_targetLat = 0.0;
 double g_ui_targetLon = 0.0;
+bool g_ui_paramsUpdated = false;
+double g_ui_speed = 0.25;
+double g_ui_batteryDrain = 0.01;
+std::vector<Obstacle*> g_ui_newObstacles;
+struct SpawnDroneEvent { double lat; double lon; };
+std::vector<SpawnDroneEvent> g_ui_spawnDrones;
 
 class WSServerImpl {
 public:
@@ -56,6 +63,27 @@ public:
                         g_ui_targetLat = j["lat"];
                         g_ui_targetLon = j["lon"];
                         g_ui_targetUpdated = true;
+                    }
+                    else if (type == "control_update") {
+                        std::lock_guard<std::mutex> lock(g_ui_simMtx);
+                        if (j.contains("speed")) {
+                            g_ui_speed = j["speed"];
+                        }
+                        if (j.contains("batteryDrain")) {
+                            g_ui_batteryDrain = j["batteryDrain"];
+                        }
+                        g_ui_paramsUpdated = true;
+                    }
+                    else if (type == "add_obstacle") {
+                        std::lock_guard<std::mutex> lock(g_ui_simMtx);
+                        double lat = j["lat"];
+                        double lon = j["lon"];
+                        double radius = j.contains("radius") ? j["radius"].get<double>() : 2.0;
+                        g_ui_newObstacles.push_back(new StaticObstacle(Coordinate(lat, lon, 0.0), radius));
+                    }
+                    else if (type == "spawn_drone") {
+                        std::lock_guard<std::mutex> lock(g_ui_simMtx);
+                        g_ui_spawnDrones.push_back({j["lat"].get<double>(), j["lon"].get<double>()});
                     }
                 }
             } catch (const std::exception& e) {
@@ -112,9 +140,10 @@ void MockSimulationServer::handleCommand(const std::string& commandJson) {
     std::cout << "[WebSocket Server] Command Received: " << commandJson << std::endl;
 }
 
-std::string MockSimulationServer::formatUAVState(double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon) {
+std::string MockSimulationServer::formatUAVState(const std::string& id, double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon) {
     std::stringstream ss;
     ss << "{\"type\": \"uav_update\", "
+       << "\"id\": \"" << id << "\", "
        << "\"lat\": " << std::fixed << std::setprecision(6) << lat << ", "
        << "\"lon\": " << lon << ", "
        << "\"alt\": " << alt << ", "
@@ -138,8 +167,8 @@ std::string MockSimulationServer::formatObstacleState(const std::string& type, c
     return ss.str();
 }
 
-std::string SimulationServer::formatUAVState(double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon) {
-    return MockSimulationServer::formatUAVState(lat, lon, alt, heading, battery, startLat, startLon, targetLat, targetLon);
+std::string SimulationServer::formatUAVState(const std::string& id, double lat, double lon, double alt, double heading, double battery, double startLat, double startLon, double targetLat, double targetLon) {
+    return MockSimulationServer::formatUAVState(id, lat, lon, alt, heading, battery, startLat, startLon, targetLat, targetLon);
 }
 
 std::string SimulationServer::formatObstacleState(const std::string& type, const std::string& id, double lat, double lon, double rad, bool dynamic) {
