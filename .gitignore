@@ -1,7 +1,15 @@
-/build
+/build/
+# Build directory ignored
 /node_modules
+node_modules/
 /.cache
 /.next
 /.vscode
 */public
 web/package-lock.json
+*.exe
+*.dll
+*.obj
+*.o
+*.a
+*.pdb
