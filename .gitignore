@@ -13,3 +13,5 @@ web/package-lock.json
 *.o
 *.a
 *.pdb
+.kilocode
+.specify
