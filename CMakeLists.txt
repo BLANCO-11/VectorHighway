@@ -9,6 +9,19 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 include(FetchContent)
 
+# Fetch Catch2 v3.7.1 for unit testing
+FetchContent_Declare(
+    Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG v3.7.1
+)
+
+option(BUILD_TESTING "Build unit tests" OFF)
+if(BUILD_TESTING)
+    set(CATCH_BUILD_TESTING OFF)
+    FetchContent_MakeAvailable(Catch2)
+endif()
+
 # Fetch Asio (Header-only dependency for WebSocket++)
 FetchContent_Declare(
     asio
@@ -21,7 +34,7 @@ FetchContent_MakeAvailable(asio)
 FetchContent_Declare(
     websocketpp
     GIT_REPOSITORY https://github.com/zaphoyd/websocketpp.git
-    GIT_TAG master
+    GIT_TAG 0.8.2
 )
 FetchContent_MakeAvailable(websocketpp)
 
@@ -62,7 +75,14 @@ if(WIN32)
 endif()
 
 # Separate executable for tests
-# add_executable(uav_tests src/tests.cpp) # Commented out until tests.cpp has a main() function
+if(BUILD_TESTING)
+    add_executable(uav_tests src/tests.cpp)
+    target_link_libraries(uav_tests PRIVATE Catch2::Catch2WithMain Threads::Threads)
+    target_compile_definitions(uav_tests PRIVATE ASIO_STANDALONE _WEBSOCKETPP_CPP11_STL_ _WEBSOCKETPP_DISABLE_BOOST_THREAD_SUPPORT _WEBSOCKETPP_DISABLE_BOOST_ASIO _WEBSOCKETPP_CPP11_THREAD_)
+    include(CTest)
+    include(Catch)
+    catch_discover_tests(uav_tests)
+endif()
 
 
 

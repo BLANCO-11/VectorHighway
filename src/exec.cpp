@@ -5,50 +5,44 @@
 #include <mutex>
 #include <random>
 #include <map>
+#include <memory>
+#include <cstdlib>
+#include <cstring>
 #include "../include/Geo.h"
 #include "../include/Environment.h"
 #include "../include/Pathfinder.h"
 #include "../include/UAV.h"
 #include "../include/websockets.h"
+#include "../include/SimulationContext.h"
+#include "../include/Types.h"
 
 using namespace std;
 
-struct CommandEvent {
-    std::string type;
-    std::string targetId;
-    double lat, lon, radius, speed, drain;
-    std::string groupId;
-};
-
-extern std::mutex g_ui_simMtx;
-extern std::vector<CommandEvent> g_ui_commands;
-
-struct ExternalTelemetry { std::string id; std::string groupId; double lat; double lon; double alt; double heading; double battery; };
-extern std::vector<ExternalTelemetry> g_ui_externalTelemetry;
-
 struct DroneContext {
-    UAV uav;
+    unique_ptr<UAV> uav;
     Coordinate startCoord;
     Coordinate targetCoord;
     double assignedSpeed = 0.25;
+
+    DroneContext(unique_ptr<UAV> u, Coordinate s, Coordinate t, double spd = 0.25)
+        : uav(std::move(u)), startCoord(s), targetCoord(t), assignedSpeed(spd) {}
 };
 
-// Class to manage random obstacle generation
 class ObstacleGenerator {
 public:
     ObstacleGenerator(double latMin, double latMax, double lonMin, double lonMax)
         : latMin(latMin), latMax(latMax), lonMin(lonMin), lonMax(lonMax), gen(rd()) {}
 
-    Obstacle* generateStatic(double radius) {
+    unique_ptr<Obstacle> generateStatic(double radius) {
         uniform_real_distribution<> latDist(latMin, latMax);
         uniform_real_distribution<> lonDist(lonMin, lonMax);
-        return new StaticObstacle(Coordinate(latDist(gen), lonDist(gen), 0.0), radius);
+        return make_unique<StaticObstacle>(Coordinate(latDist(gen), lonDist(gen), 0.0), radius);
     }
 
-    Obstacle* generateDynamic(double radius, double speed, double heading) {
+    unique_ptr<Obstacle> generateDynamic(double radius, double speed, double heading) {
         uniform_real_distribution<> latDist(latMin, latMax);
         uniform_real_distribution<> lonDist(lonMin, lonMax);
-        return new DynamicObstacle(Coordinate(latDist(gen), lonDist(gen), 0.0), radius, speed, heading);
+        return make_unique<DynamicObstacle>(Coordinate(latDist(gen), lonDist(gen), 0.0), radius, speed, heading);
     }
 
 private:
@@ -57,136 +51,154 @@ private:
     mt19937 gen;
 };
 
-int main() {
-    // Initialize Mock Server for Phase 5
-    MockSimulationServer server;
-    server.start(8080);
+int main(int argc, char* argv[]) {
+    int port = DEFAULT_PORT;
 
-    // Define target coordinates
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+            port = atoi(argv[i + 1]);
+            ++i;
+        }
+    }
+
+    const char* envPort = getenv("UAV_SIM_PORT");
+    if (envPort) {
+        port = atoi(envPort);
+    }
+
+    SimulationContext context;
+
+    MockSimulationServer server;
+    server.start(port, &context);
+
     Coordinate targetCoord(48.423366, 2.345332, 0.0);
     Coordinate startCoord(26.870601, 75.794110, 0.0);
-    
-    // Phase 2: Obstacle Generation
-    std::vector<Obstacle*> obstacles;
-    obstacles.push_back(new StaticObstacle(Coordinate(48.0, 2.0, 0.0), 5.0));
-    obstacles.push_back(new DynamicObstacle(Coordinate(47.5, 2.1, 0.0), 2.0, 1.5, 90.0));
-    
-    // Phase 3: Local Avoidance Initialization
-    LocalAvoidance avoidance(10.0, 60.0); // 10km sensor range, 60 degree FOV
 
-    // Phase 5: Swarm Architecture initialization
-    std::map<std::string, DroneContext> swarm;
-    swarm.insert({"alpha_1", { UAV(startCoord, 45.0, 0.25, 90.0, "alpha"), startCoord, targetCoord, 0.25 }});
-    swarm.insert({"bravo_1", { UAV(Coordinate(26.88, 75.80, 0.0), 0.0, 0.25, 90.0, "bravo"), Coordinate(26.88, 75.80, 0.0), targetCoord, 0.25 }});
+    vector<unique_ptr<Obstacle>> obstacles;
+    obstacles.push_back(make_unique<StaticObstacle>(Coordinate(48.0, 2.0, 0.0), 5.0));
+    obstacles.push_back(make_unique<DynamicObstacle>(Coordinate(47.5, 2.1, 0.0), 2.0, 1.5, 90.0));
 
-    cout << "Starting Simulation Loop..." << endl;
+    LocalAvoidance avoidance(10.0, 60.0);
 
-    // Phase 4: Deterministic Tick-based Update Loop
+    map<string, DroneContext> swarm;
+    swarm.try_emplace("alpha_1", make_unique<UAV>(startCoord, 45.0, 0.25, 90.0, "alpha"), startCoord, targetCoord, 0.25);
+    swarm.try_emplace("bravo_1", make_unique<UAV>(Coordinate(26.88, 75.80, 0.0), 0.0, 0.25, 90.0, "bravo"), Coordinate(26.88, 75.80, 0.0), targetCoord, 0.25);
+
+    cout << "Starting Simulation Loop on port " << port << "..." << endl;
+
     auto lastTime = std::chrono::high_resolution_clock::now();
-    while (true) { // Infinite continuous loop for live UI interaction
+    while (true) {
         auto currentTime = std::chrono::high_resolution_clock::now();
         double deltaTime = std::chrono::duration<double>(currentTime - lastTime).count();
-        if (deltaTime <= 0) deltaTime = 0.1; // Avoid zero/negative delta
+        if (deltaTime <= 0) deltaTime = 0.1;
         lastTime = currentTime;
 
-        // 0. Check for UI Target Updates from WebSocket
         {
-            std::lock_guard<std::mutex> lock(g_ui_simMtx);
-            for (const auto& cmd : g_ui_commands) {
+            auto cmds = context.drainCommands();
+            for (const auto& cmd : cmds) {
                 if (cmd.type == "target") {
                     Coordinate tgt(cmd.lat, cmd.lon, 0.0);
                     for (auto& pair : swarm) {
-                        if (cmd.targetId == "all" || pair.second.uav.groupId == cmd.targetId || pair.first == cmd.targetId) {
+                        if (cmd.targetId == "all" || pair.second.uav->groupId == cmd.targetId || pair.first == cmd.targetId) {
                             pair.second.targetCoord = tgt;
                         }
                     }
                 } else if (cmd.type == "control") {
                     for (auto& pair : swarm) {
-                        if (cmd.targetId == "all" || pair.second.uav.groupId == cmd.targetId || pair.first == cmd.targetId) {
+                        if (cmd.targetId == "all" || pair.second.uav->groupId == cmd.targetId || pair.first == cmd.targetId) {
                             if (cmd.speed >= 0.0) pair.second.assignedSpeed = cmd.speed;
-                            if (cmd.drain >= 0.0) pair.second.uav.batteryDrainRate = cmd.drain;
+                            if (cmd.drain >= 0.0) pair.second.uav->batteryDrainRate = cmd.drain;
                         }
                     }
                 } else if (cmd.type == "spawn") {
                     Coordinate spawnCoord(cmd.lat, cmd.lon, 0.0);
-                    std::string id = "drone_" + to_string(swarm.size() + 1);
+                    string id = "drone_" + to_string(swarm.size() + 1);
                     Coordinate initialTarget = spawnCoord;
                     for (const auto& pair : swarm) {
-                        if (pair.second.uav.groupId == cmd.groupId) {
+                        if (pair.second.uav->groupId == cmd.groupId) {
                             initialTarget = pair.second.targetCoord;
                             break;
                         }
                     }
-                    swarm.insert({id, { UAV(spawnCoord, 0.0, 0.25, 90.0, cmd.groupId), spawnCoord, initialTarget, 0.25 }});
+                    swarm.try_emplace(id, make_unique<UAV>(spawnCoord, 0.0, 0.25, 90.0, cmd.groupId), spawnCoord, initialTarget, 0.25);
                     cout << ">>> NEW DRONE SPAWNED: " << id << " IN GROUP " << cmd.groupId << " <<<" << endl;
                 } else if (cmd.type == "obstacle") {
-                    Obstacle* obs = new StaticObstacle(Coordinate(cmd.lat, cmd.lon, 0.0), cmd.radius, cmd.groupId);
-                    obstacles.push_back(obs);
+                    auto obs = make_unique<StaticObstacle>(Coordinate(cmd.lat, cmd.lon, 0.0), cmd.radius, cmd.groupId);
                     server.broadcast(SimulationServer::formatObstacleState(
-                        "static", "obs_" + to_string(obstacles.size()), cmd.lat, cmd.lon, cmd.radius, false, cmd.groupId
+                        "static", "obs_" + to_string(obstacles.size() + 1), cmd.lat, cmd.lon, cmd.radius, false, cmd.groupId
                     ));
+                    obstacles.push_back(std::move(obs));
                 }
             }
-            g_ui_commands.clear();
-            
-            // Phase 4: Forward external MAVLink/real-world drones telemetry
-            for (const auto& ext : g_ui_externalTelemetry) {
-                string stateJson = SimulationServer::formatUAVState(
-                    ext.id, ext.groupId, ext.lat, ext.lon, ext.alt, ext.heading, ext.battery,
-                    ext.lat, ext.lon, ext.lat, ext.lon // Real drones just report current pos as start/target
-                );
-                
-                server.broadcast(stateJson);
+
+            auto telemetryPackets = context.drainExternalTelemetry();
+            for (const auto& ext : telemetryPackets) {
+                context.updateExternalDrone(ext);
             }
-            g_ui_externalTelemetry.clear();
         }
 
-        // 1. Process Swarm Updates
+        {
+            auto stale = context.getStaleDrones();
+            for (const auto& id : stale) {
+                cout << ">>> STALE DRONE REMOVED: " << id << " (30s timeout) <<<" << endl;
+            }
+        }
+
+        {
+            auto activeExt = context.getActiveExternalDrones();
+            for (const auto& drone : activeExt) {
+                const auto& ext = drone.telemetry;
+                string stateJson = SimulationServer::formatUAVState(
+                    ext.id, ext.groupId, ext.lat, ext.lon, ext.alt, ext.heading, ext.battery,
+                    ext.lat, ext.lon, ext.lat, ext.lon
+                );
+                server.broadcast(stateJson);
+            }
+        }
+
         for (auto& pair : swarm) {
             auto& ctx = pair.second;
-            auto& uav = ctx.uav;
+            auto& uav = *ctx.uav;
 
             double distToTarget = uav.position.distanceTo(ctx.targetCoord);
-            double frameTravel = std::max(ctx.assignedSpeed, uav.currentSpeed) * deltaTime;
-            
-            // Corrected Velocity Tracking - Enforce perfect arrival without overshoot
-            if (distToTarget <= frameTravel * 1.5) { 
+            double frameTravel = max(ctx.assignedSpeed, uav.currentSpeed) * deltaTime;
+
+            if (distToTarget <= frameTravel * 1.5) {
                 uav.position = ctx.targetCoord;
                 uav.targetSpeed = 0.0;
                 uav.currentSpeed = 0.0;
             } else {
                 double targetHeading = uav.position.bearingTo(ctx.targetCoord);
 
-                for (auto* obs : obstacles) {
+                for (const auto& obs : obstacles) {
                     if (obs->groupId.empty() || obs->groupId == uav.groupId) {
-                        if (avoidance.isObstacleInPath(uav.position, targetHeading, obs)) {
-                            targetHeading = avoidance.recalculateHeading(uav.position, targetHeading, obs);
-                            break; 
+                        if (avoidance.isObstacleInPath(uav.position, targetHeading, obs.get())) {
+                            targetHeading = avoidance.recalculateHeading(uav.position, targetHeading, obs.get());
+                            break;
                         }
                     }
                 }
 
                 uav.adjustHeading(targetHeading, deltaTime);
-                
-                double diff = std::abs(std::fmod(targetHeading - uav.heading + 360.0, 360.0));
+
+                double diff = abs(fmod(targetHeading - uav.heading + 360.0, 360.0));
                 if (diff > 180.0) diff = 360.0 - diff;
 
                 if (diff > 25.0) {
-                    uav.targetSpeed = 0.0; // Halt to execute turn
+                    uav.targetSpeed = 0.0;
                 } else {
-                    uav.targetSpeed = ctx.assignedSpeed; // Clear to fly
+                    uav.targetSpeed = ctx.assignedSpeed;
                 }
 
                 uav.update(deltaTime, 0.0);
             }
 
-            // Broadcast state via WebSocket
             string stateJson = SimulationServer::formatUAVState(
                 pair.first, uav.groupId,
-                uav.position.latitude, 
-                uav.position.longitude, 
-                0.0, 
-                uav.heading, 
+                uav.position.latitude,
+                uav.position.longitude,
+                0.0,
+                uav.heading,
                 uav.batteryLevel,
                 ctx.startCoord.latitude,
                 ctx.startCoord.longitude,
@@ -196,18 +208,13 @@ int main() {
             server.broadcast(stateJson);
         }
 
-        // 2. Update dynamic obstacles
-        for (auto* obs : obstacles) {
+        for (auto& obs : obstacles) {
             if (obs->isDynamic) {
                 obs->updatePosition(deltaTime);
             }
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Tick at 20Hz for fluid movement
-    }
-
-    for (auto* obs : obstacles) {
-        delete obs;
+        this_thread::sleep_for(chrono::milliseconds(static_cast<int>(1000.0 / SIMULATION_TICK_HZ)));
     }
 
     server.stop();

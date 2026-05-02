@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 
 export interface UAVState {
   id: string;
+  groupId: string;
   lat: number;
   lon: number;
   alt: number;
@@ -21,7 +22,16 @@ export interface ChargingStationState {
   chargingRate: number;
 }
 
-export const useSimulationWebSocket = (url: string = 'ws://localhost:8080') => {
+export interface ObstacleState {
+  id: string;
+  lat: number;
+  lon: number;
+  radius: number;
+  dynamic: boolean;
+  groupId?: string;
+}
+
+export const useSimulationWebSocket = (url: string = 'ws://localhost:7200') => {
   const [uavs, setUavs] = useState<Record<string, UAVState>>({});
   const [obstacles, setObstacles] = useState<Record<string, ObstacleState>>({});
   const [chargingStations, setChargingStations] = useState<Record<string, ChargingStationState>>({});
@@ -52,6 +62,7 @@ export const useSimulationWebSocket = (url: string = 'ws://localhost:8080') => {
             ...prev,
             [data.id]: {
               id: data.id,
+              groupId: data.groupId || "",
               lat: data.lat,
               lon: data.lon,
               alt: data.alt,
@@ -80,16 +91,23 @@ export const useSimulationWebSocket = (url: string = 'ws://localhost:8080') => {
     };
 
     return () => {
+      wsRef.current = null;
       ws.close();
     };
   }, [url]);
 
-  // Return obstacles as an array for easier rendering in 3D/UI
+  const sendMessage = (msg: string) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(msg);
+    }
+  };
+
   return { 
     uavs: Object.values(uavs), 
     obstacles: Object.values(obstacles), 
     chargingStations: Object.values(chargingStations),
     isConnected,
-    sendMessage: (msg: string) => wsRef.current?.send(msg) 
+    sendMessage,
   };
 };

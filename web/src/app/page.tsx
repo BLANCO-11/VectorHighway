@@ -1,41 +1,27 @@
 "use client";
 
-import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Stars, useTexture, Html } from '@react-three/drei';
+import React, { useState, useEffect } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
-import { useSimulationWebSocket, ObstacleState, UAVState } from '../useSimulationWebSocket';
-import { Navigation, MapPin, AlertTriangle, ShieldAlert, Crosshair, PlusCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { LineChart, Line, YAxis, ResponsiveContainer } from 'recharts';
+import { useSimulationWebSocket } from '../useSimulationWebSocket';
+import Earth from '../components/map/Earth';
+import UAVMarker from '../components/map/UAVMarker';
+import ObstacleMarker from '../components/map/ObstacleMarker';
+import DestinationMarker from '../components/map/DestinationMarker';
+import ConnectionLines from '../components/map/ConnectionLines';
+import ControlPanel from '../components/panels/ControlPanel';
+import SwarmPanel from '../components/panels/SwarmPanel';
+import TelemetryPanel from '../components/panels/TelemetryPanel';
+import BatteryChart from '../components/panels/BatteryChart';
+import Card from '../components/ui/Card';
 
 const EARTH_RADIUS = 5;
-
-const GROUP_COLORS: Record<string, string> = {
-  alpha: '#32CD32',
-  bravo: '#4488ff',
-  charlie: '#ff00ff',
-  default: '#ffffff'
-};
-
-const getColorForGroup = (group?: string) => {
-  if (!group) return GROUP_COLORS.default;
-  if (GROUP_COLORS[group]) return GROUP_COLORS[group];
-  // Generate a deterministic bright color based on string hash
-  let hash = 0;
-  for (let i = 0; i < group.length; i++) hash = group.charCodeAt(i) + ((hash << 5) - hash);
-  const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-  const hex = '#' + '00000'.substring(0, 6 - c.length) + c;
-  GROUP_COLORS[group] = hex; // cache it
-  return hex;
-};
-// --- Utilities ---
 
 const getCartesian = (lat: number, lon: number, radius: number, alt: number = 0) => {
   const phi = (90 - lat) * (Math.PI / 180);
   const theta = (lon + 180) * (Math.PI / 180);
   const r = radius + alt;
-  
   return new THREE.Vector3(
     -(r * Math.sin(phi) * Math.cos(theta)),
     r * Math.cos(phi),
@@ -43,20 +29,22 @@ const getCartesian = (lat: number, lon: number, radius: number, alt: number = 0)
   );
 };
 
-/**
- * Generates points along a Great Circle arc between two lat/lon points
- */
-const getGreatCirclePoints = (lat1: number, lon1: number, lat2: number, lon2: number, radius: number, alt: number = 0, segments: number = 32) => {
-  const points = [];
-  const start = getCartesian(lat1, lon1, radius, alt);
-  const end = getCartesian(lat2, lon2, radius, alt);
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    // Spherical linear interpolation for accurate arcs
-    const pt = start.clone().lerp(end, t).normalize().multiplyScalar(radius + alt);
-    points.push(pt);
-  }
-  return points;
+const GROUP_COLORS: Record<string, string> = {
+  alpha: '#32CD32',
+  bravo: '#4488ff',
+  charlie: '#ff00ff',
+  default: '#ffffff',
+};
+
+const getColorForGroup = (group?: string) => {
+  if (!group) return GROUP_COLORS.default;
+  if (GROUP_COLORS[group]) return GROUP_COLORS[group];
+  let hash = 0;
+  for (let i = 0; i < group.length; i++) hash = group.charCodeAt(i) + ((hash << 5) - hash);
+  const c = (hash & 0x00ffffff).toString(16).toUpperCase();
+  const hex = '#' + '00000'.substring(0, 6 - c.length) + c;
+  GROUP_COLORS[group] = hex;
+  return hex;
 };
 
 interface ControlParams {
@@ -73,224 +61,30 @@ interface SelectedEntity {
   lon?: number;
 }
 
-// --- 3D Components ---
-
-function Earth({ onClick }: { onClick?: (lat: number, lon: number) => void }) {
-  const texture = useTexture('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg');
-
-  const handleClick = (e: any) => {
-    e.stopPropagation();
-    if (!onClick) return;
-    const pt = e.point.clone().normalize();
-    const phi = Math.acos(pt.y);
-    const theta = Math.atan2(pt.z, -pt.x);
-    
-    const lat = 90 - (phi * 180 / Math.PI);
-    let lon = (theta * 180 / Math.PI) - 180;
-    while (lon < -180) lon += 360;
-    while (lon > 180) lon -= 360;
-    
-    onClick(lat, lon);
-  };
-  
-  return (
-    <group>
-      <mesh onClick={handleClick}>
-        <sphereGeometry args={[EARTH_RADIUS, 64, 64]} />
-        <meshStandardMaterial 
-          map={texture} 
-          roughness={0.4}
-          metalness={0.1}
-          emissive="#112244"
-          emissiveIntensity={0.5}
-        />
-      </mesh>
-      {/* Atmosphere Glow */}
-      <mesh scale={[1.05, 1.05, 1.05]}>
-        <sphereGeometry args={[EARTH_RADIUS, 64, 64]} />
-        <meshPhongMaterial 
-          color="#4488ff" 
-          transparent 
-          opacity={0.3} 
-          side={THREE.BackSide} 
-        />
-      </mesh>
-    </group>
-  );
-}
-
-function UAVMarker({ state, onSelect }: { state: UAVState, onSelect: (e: SelectedEntity) => void }) {
-  const groupRef = useRef<THREE.Group>(null);
-
-  const color = getColorForGroup(state.groupId);
-
-  const targetPos = useMemo(() => {
-    if (!state) return new THREE.Vector3();
-    return getCartesian(state.lat, state.lon, EARTH_RADIUS, state.alt / 1000 + 0.1);
-  }, [state?.lat, state?.lon, state?.alt]);
-
-  useFrame((_, delta) => {
-    if (groupRef.current && state) {
-      groupRef.current.position.lerp(targetPos, delta * 15);
-      
-      const distance = 0.01;
-      const headingRad = state.heading * Math.PI / 180;
-      const latRad = state.lat * Math.PI / 180;
-      const lonRad = state.lon * Math.PI / 180;
-      
-      const newLatRad = Math.asin(Math.sin(latRad) * Math.cos(distance) + Math.cos(latRad) * Math.sin(distance) * Math.cos(headingRad));
-      const newLonRad = lonRad + Math.atan2(Math.sin(headingRad) * Math.sin(distance) * Math.cos(latRad), Math.cos(distance) - Math.sin(latRad) * Math.sin(newLatRad));
-      
-      const lookAtPos = getCartesian(newLatRad * 180 / Math.PI, newLonRad * 180 / Math.PI, EARTH_RADIUS, state.alt / 1000 + 0.1);
-      
-      const matrix = new THREE.Matrix4();
-      matrix.lookAt(groupRef.current.position, lookAtPos, groupRef.current.position.clone().normalize());
-      const targetQuat = new THREE.Quaternion().setFromRotationMatrix(matrix);
-      groupRef.current.quaternion.slerp(targetQuat, delta * 15);
-    }
-  });
-
-  return (
-    <group
-      ref={groupRef}
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect({ type: 'uav', id: state.id, lat: state.lat, lon: state.lon });
-      }}
-    >
-      <mesh visible={false}>
-        <sphereGeometry args={[0.3, 16, 16]} />
-        <meshBasicMaterial />
-      </mesh>
-      <Html center zIndexRange={[100, 0]}>
-        <div 
-          className="pointer-events-none drop-shadow-md"
-          style={{
-            color: color,
-            filter: `drop-shadow(0 0 8px ${color})`,
-            transform: `rotate(${state.heading}deg)`
-          }}
-        >
-          <Navigation size={24} className="fill-current" />
-        </div>
-      </Html>
-    </group>
-  );
-}
-
-function ObstacleMarker({ obs, onSelect }: { obs: ObstacleState, onSelect: (e: SelectedEntity) => void }) {
-  const pos = useMemo(() => getCartesian(obs.lat, obs.lon, EARTH_RADIUS), [obs]);
-  const color = obs.groupId ? getColorForGroup(obs.groupId) : '#ff0000';
-  const visualRadius = (obs.radius / 6371) * EARTH_RADIUS; // accurately scale to globe
-  
-  const quaternion = useMemo(() => {
-    const up = new THREE.Vector3(0, 1, 0);
-    const normal = pos.clone().normalize();
-    return new THREE.Quaternion().setFromUnitVectors(up, normal);
-  }, [pos]);
-
-  return (
-    <group 
-      position={pos} 
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect({ type: 'obstacle', id: obs.id, lat: obs.lat, lon: obs.lon });
-      }}
-    >
-      <mesh visible={false}>
-        <sphereGeometry args={[0.3, 16, 16]} />
-        <meshBasicMaterial />
-      </mesh>
-      <mesh quaternion={quaternion}>
-        <cylinderGeometry args={[visualRadius, visualRadius, 0.02, 64]} />
-        <meshStandardMaterial color={color} transparent opacity={0.2} emissive={color} emissiveIntensity={0.3} />
-      </mesh>
-      <Html center>
-        <div className="pointer-events-none text-white opacity-80" style={{ filter: `drop-shadow(0 0 8px ${color})` }}>
-          {obs.dynamic ? <AlertTriangle size={20} className="fill-current" /> : <ShieldAlert size={20} className="fill-current" />}
-        </div>
-      </Html>
-    </group>
-  );
-}
-
-function DestinationMarker({ lat, lon, onSelect }: { lat: number, lon: number, onSelect: (e: SelectedEntity) => void }) {
-  const pos = useMemo(() => getCartesian(lat, lon, EARTH_RADIUS), [lat, lon]);
-
-  return (
-    <group 
-      position={pos}
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect({ type: 'destination', lat, lon });
-      }}
-    >
-      <mesh visible={false}>
-        <sphereGeometry args={[0.3, 16, 16]} />
-        <meshBasicMaterial />
-      </mesh>
-      <Html center>
-        <div className="text-cyan-400 drop-shadow-[0_0_8px_rgba(0,255,255,0.8)] pointer-events-none">
-          <MapPin size={24} className="fill-current" />
-        </div>
-      </Html>
-    </group>
-  );
-}
-
-function ConnectionLines({ uavState, history, color }: { uavState: UAVState, history: THREE.Vector3[], color: string }) {
-  const lines = useMemo(() => {
-    
-    const activePoints = getGreatCirclePoints(uavState.lat, uavState.lon, uavState.targetLat, uavState.targetLon, EARTH_RADIUS, uavState.alt / 1000);
-
-    return (
-      <group>
-        {history && history.map((pt, i, arr) => {
-          if (i === 0) return null;
-          const opacity = Math.max(0, i / arr.length);
-          if (opacity <= 0) return null;
-          return (
-            <line key={`hist-${i}`}>
-              <bufferGeometry attach="geometry" setFromPoints={[arr[i-1], pt]} />
-              <lineBasicMaterial attach="material" color={color} transparent opacity={opacity * 0.8} linewidth={2} />
-            </line>
-          );
-        })}
-        <line>
-          <bufferGeometry attach="geometry" setFromPoints={activePoints} />
-          <lineBasicMaterial attach="material" color={color} transparent opacity={0.4} linewidth={1} />
-        </line>
-      </group>
-    );
-  }, [uavState, history, color]);
-
-  return lines;
-}
-
-// --- Main UI Component ---
+type ClickMode = 'target' | 'obstacle' | 'spawn_drone';
 
 export default function SimulatorPage() {
-  const { uavs, obstacles, isConnected, sendMessage } = useSimulationWebSocket('ws://localhost:8080');
+  const { uavs, obstacles, isConnected, sendMessage } = useSimulationWebSocket('ws://localhost:7200');
   const [selected, setSelected] = useState<SelectedEntity>({ type: 'none' });
-  const [clickMode, setClickMode] = useState<'target' | 'obstacle' | 'spawn_drone'>('target');
+  const [clickMode, setClickMode] = useState<ClickMode>('target');
   const [groups, setGroups] = useState<string[]>(['alpha', 'bravo', 'charlie']);
   const [newGroup, setNewGroup] = useState('');
   const [activeGroup, setActiveGroup] = useState<string>('alpha');
-  const [history, setHistory] = useState<{time: string, battery: number}[]>([]);
+  const [history, setHistory] = useState<{ time: string; battery: number }[]>([]);
   const [droneHistory, setDroneHistory] = useState<Record<string, THREE.Vector3[]>>({});
   const status = isConnected ? 'Connected to Engine' : 'Awaiting signal...';
   const [params, setParams] = useState<ControlParams>({
     speed: 0.25,
     batteryDrain: 0.05,
     turnRate: 15.0,
-    chargingRate: 2.0
+    chargingRate: 2.0,
   });
 
   useEffect(() => {
     let updatedHistory = false;
-    let newDroneHistory = { ...droneHistory };
-    
-    uavs.forEach(uav => {
+    const newDroneHistory: Record<string, THREE.Vector3[]> = { ...droneHistory };
+
+    uavs.forEach((uav) => {
       const pos = getCartesian(uav.lat, uav.lon, EARTH_RADIUS, uav.alt / 1000);
       const hist = newDroneHistory[uav.id] || [pos];
       const lastPos = hist[hist.length - 1];
@@ -299,207 +93,98 @@ export default function SimulatorPage() {
         updatedHistory = true;
       }
     });
-    
+
     if (updatedHistory) setDroneHistory(newDroneHistory);
 
-    const activeDrones = uavs.filter(u => u.groupId === activeGroup);
+    const activeDrones = uavs.filter((u) => u.groupId === activeGroup);
     if (activeDrones.length > 0) {
-      const avgBattery = activeDrones.reduce((sum, u) => sum + u.battery, 0) / activeDrones.length;
-      setHistory(prev => {
-        if (prev.length === 0 || Math.abs(prev[prev.length - 1].battery - avgBattery) > 0.01) {
-           return [...prev, { time: new Date().toLocaleTimeString(), battery: avgBattery }].slice(-20);
+      const avgBattery =
+        activeDrones.reduce((sum, u) => sum + u.battery, 0) / activeDrones.length;
+      setHistory((prev) => {
+        if (
+          prev.length === 0 ||
+          Math.abs(prev[prev.length - 1].battery - avgBattery) > 0.01
+        ) {
+          return [...prev, { time: new Date().toLocaleTimeString(), battery: avgBattery }].slice(-20);
         }
         return prev;
       });
     }
   }, [uavs, activeGroup]);
 
-  // Phase 4: Mock External Hardware Drone via Pub/Sub
-  useEffect(() => {
-    if (!isConnected) return;
-    let mockLat = 51.5074;
-    let mockLon = -0.1278;
-    
-    const interval = setInterval(() => {
-      mockLat += 0.005; // Move steadily to represent real-world telemetry
-      sendMessage(JSON.stringify({
-        topic: 'telemetry/external/real_px4_drone',
-        payload: { lat: mockLat, lon: mockLon, alt: 150, heading: 90, battery: 88.5, groupId: 'bravo' }
-      }));
-    }, 1000);
-    
-    return () => clearInterval(interval);
-  }, [isConnected, sendMessage]);
-
   const handleParamChange = (key: keyof ControlParams, val: number) => {
-    setParams(p => ({ ...p, [key]: val }));
-    sendMessage(JSON.stringify({ topic: `cmd/fleet/${activeGroup}/control`, payload: { [key]: val } }));
+    setParams((p) => ({ ...p, [key]: val }));
+    sendMessage(
+      JSON.stringify({ topic: `cmd/fleet/${activeGroup}/control`, payload: { [key]: val } })
+    );
   };
 
   const handleGlobeClick = (lat: number, lon: number) => {
     if (clickMode === 'target') {
-      const topic = (selected.type === 'uav' && selected.id) 
-        ? `cmd/fleet/${selected.id}/target` 
-        : `cmd/fleet/${activeGroup}/target`;
+      const topic =
+        selected.type === 'uav' && selected.id
+          ? `cmd/fleet/${selected.id}/target`
+          : `cmd/fleet/${activeGroup}/target`;
       sendMessage(JSON.stringify({ topic, payload: { lat, lon } }));
     } else if (clickMode === 'obstacle') {
-      sendMessage(JSON.stringify({ topic: 'cmd/environment/obstacle', payload: { lat, lon, radius: 250.0, groupId: activeGroup } }));
+      sendMessage(
+        JSON.stringify({
+          topic: 'cmd/environment/obstacle',
+          payload: { lat, lon, radius: 250.0, groupId: activeGroup },
+        })
+      );
     } else if (clickMode === 'spawn_drone') {
-      sendMessage(JSON.stringify({ topic: 'cmd/fleet/spawn', payload: { lat, lon, groupId: activeGroup } }));
+      sendMessage(
+        JSON.stringify({ topic: 'cmd/fleet/spawn', payload: { lat, lon, groupId: activeGroup } })
+      );
+    }
+  };
+
+  const handleAddGroup = () => {
+    const g = newGroup.trim().toLowerCase();
+    if (g && !groups.includes(g)) {
+      setGroups([...groups, g]);
+      setActiveGroup(g);
+      setNewGroup('');
     }
   };
 
   return (
     <main className="relative flex h-screen w-full bg-[#050505] overflow-hidden text-white">
       <div className="absolute left-6 top-6 bottom-6 z-20 w-80 flex flex-col gap-4">
-        <div className="p-6 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 shadow-2xl">
+        <Card>
           <h1 className="text-xl font-light tracking-widest text-white/90 mb-1">UAV COMMAND</h1>
           <p className="text-[10px] text-blue-400 uppercase tracking-tighter mb-6">{status}</p>
 
-          <div className="flex flex-col gap-2 mb-6">
-            <div className="flex flex-wrap gap-2">
-              {groups.map(g => (
-                <button 
-                  key={g} 
-                  onClick={() => setActiveGroup(g)}
-                  className={`flex-1 text-[10px] uppercase font-bold tracking-wider py-1.5 px-2 rounded transition-all border ${activeGroup === g ? 'border-white text-white' : 'border-white/10 text-white/50 hover:bg-white/5'}`}
-                  style={{ backgroundColor: activeGroup === g ? getColorForGroup(g) + '40' : 'transparent', borderColor: activeGroup === g ? getColorForGroup(g) : '' }}
-                >
-                  {g}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2 mt-1">
-              <input 
-                type="text" 
-                value={newGroup} 
-                onChange={(e) => setNewGroup(e.target.value)} 
-                placeholder="NEW SWARM GROUP" 
-                className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-white/30 uppercase tracking-widest"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newGroup.trim() && !groups.includes(newGroup.trim().toLowerCase())) {
-                    const g = newGroup.trim().toLowerCase();
-                    setGroups([...groups, g]);
-                    setActiveGroup(g);
-                    setNewGroup('');
-                  }
-                }}
-              />
-              <button 
-                onClick={() => {
-                  if (newGroup.trim() && !groups.includes(newGroup.trim().toLowerCase())) {
-                    const g = newGroup.trim().toLowerCase();
-                    setGroups([...groups, g]);
-                    setActiveGroup(g);
-                    setNewGroup('');
-                  }
-                }}
-                className="bg-white/10 hover:bg-white/20 border border-white/10 rounded px-3 py-1 text-[10px] uppercase tracking-wider"
-              >
-                Add
-              </button>
-            </div>
-          </div>
+          <SwarmPanel
+            groups={groups}
+            activeGroup={activeGroup}
+            newGroup={newGroup}
+            onNewGroupChange={setNewGroup}
+            onAddGroup={handleAddGroup}
+            onSetActiveGroup={setActiveGroup}
+          />
 
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <div className="flex justify-between text-[11px] text-white/60 uppercase">
-                <span>Velocity</span>
-                <span>{params.speed.toFixed(2)} km/s</span >
-              </div >
-              <input 
-                type="range" min="0" max="1000" step="0.01" 
-                value={params.speed}
-                onChange={(e) => handleParamChange('speed', parseFloat(e.target.value))}
-                className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
-              />
-            </div >
+          <ControlPanel
+            params={params}
+            clickMode={clickMode}
+            onParamChange={handleParamChange}
+            onClickModeChange={setClickMode}
+          />
+        </Card>
 
-            <div className="space-y-2">
-              <div className="flex justify-between text-[11px] text-white/60 uppercase">
-                <span>Energy Drain</span>
-                <span>{params.batteryDrain.toFixed(3)}%/s</span >
-              </div >
-              <input 
-                type="range" min="0" max="0.5" step="0.001" 
-                value={params.batteryDrain}
-                onChange={(e) => handleParamChange('batteryDrain', parseFloat(e.target.value))}
-                className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-red-500"
-              />
-            </div >
-            
-            <div className="pt-4 flex gap-2 border-t border-white/10">
-              <button 
-                onClick={() => setClickMode('target')}
-                className={`flex-1 py-2 text-[10px] uppercase tracking-widest rounded transition-colors ${clickMode === 'target' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'bg-white/5 text-white/40 border border-transparent hover:bg-white/10'}`}
-              >
-                <Crosshair className="inline mr-2" size={14}/> Target
-              </button>
-              <button 
-                onClick={() => setClickMode('obstacle')}
-                className={`flex-1 py-2 text-[10px] uppercase tracking-widest rounded transition-colors ${clickMode === 'obstacle' ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'bg-white/5 text-white/40 border border-transparent hover:bg-white/10'}`}
-              >
-                <PlusCircle className="inline mr-2" size={14}/> No-Fly
-              </button>
-              <button 
-                onClick={() => setClickMode('spawn_drone')}
-                className={`flex-1 py-2 text-[10px] uppercase tracking-widest rounded transition-colors ${clickMode === 'spawn_drone' ? 'bg-lime-500/20 text-lime-400 border border-lime-500/50' : 'bg-white/5 text-white/40 border border-transparent hover:bg-white/10'}`}
-              >
-                <Navigation className="inline mr-2" size={14}/> Spawn
-              </button>
-            </div>
-          </div >
-        </div >
-
-        <AnimatePresence>
-          {selected.type !== 'none' && (
-            <motion.div 
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="p-6 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 shadow-2xl"
-            >
-              <h2 className="text-[10px] text-white/40 uppercase mb-4 tracking-widest">Telemetry</h2>
-              <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-white/40 uppercase">Entity</span>
-                <span className="text-xs font-mono text-blue-400 uppercase">{selected.type}</span>
-              </div >
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <p className="text-white/40 text-[9px] uppercase">Lat</p>
-                  <p className="font-mono text-white">{selected.lat?.toFixed(4)}</p>
-                </div >
-                <div>
-                  <p className="text-white/40 text-[9px] uppercase">Lon</p>
-                  <p className="font-mono text-white">{selected.lon?.toFixed(4)}</p>
-                </div >
-              </div >
-              {selected.id && (
-                <div>
-                  <p className="text-white/40 text-[9px] uppercase">ID</p>
-                  <p className="font-mono text-xs text-white/80">{selected.id}</p>
-                </div >
-              )}
-            </div >
-            </motion.div>
-          )}
-        </AnimatePresence>
-        
-        {history.length > 0 && (
-          <div className="p-4 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 shadow-2xl flex-1 flex flex-col min-h-0">
-            <h2 className="text-[10px] text-white/40 uppercase mb-2 tracking-widest">Avg Battery ({activeGroup})</h2>
-            <div className="flex-1 min-h-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={history}>
-                  <YAxis domain={[0, 100]} hide />
-                  <Line type="monotone" dataKey="battery" stroke={getColorForGroup(activeGroup)} strokeWidth={2} dot={false} isAnimationActive={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+        {selected.type !== 'none' && (
+          <TelemetryPanel selected={selected} />
         )}
-      </div >
+
+        {history.length > 0 && (
+          <BatteryChart
+            history={history}
+            color={getColorForGroup(activeGroup)}
+            groupName={activeGroup}
+          />
+        )}
+      </div>
 
       <div className="grow cursor-crosshair">
         <Canvas camera={{ position: [12, 12, 12], fov: 45 }}>
@@ -508,29 +193,32 @@ export default function SimulatorPage() {
           <pointLight position={[10, 10, 10]} intensity={2} />
           <spotLight position={[-10, 10, 10]} angle={0.15} penumbra={1} />
           <Stars radius={300} depth={60} count={20000} factor={7} saturation={0} fade speed={1} />
-          
+
           <Earth onClick={handleGlobeClick} />
-          
-          {uavs.map(uav => (
+
+          {uavs.map((uav) => (
             <React.Fragment key={uav.id}>
-              <ConnectionLines uavState={uav} history={droneHistory[uav.id] || []} color={getColorForGroup(uav.groupId)} />
+              <ConnectionLines
+                uavState={uav}
+                history={droneHistory[uav.id] || []}
+                color={getColorForGroup(uav.groupId)}
+              />
               <UAVMarker state={uav} onSelect={(e) => setSelected(e)} />
-              <DestinationMarker lat={uav.targetLat} lon={uav.targetLon} onSelect={(e) => setSelected(e)} />
+              <DestinationMarker
+                lat={uav.targetLat}
+                lon={uav.targetLon}
+                onSelect={(e) => setSelected(e)}
+              />
             </React.Fragment>
           ))}
 
-          {obstacles.map(obs => (
-            <ObstacleMarker 
-              key={obs.id} 
-              obs={obs} 
-              onSelect={(e) => setSelected(e)} 
-            />
+          {obstacles.map((obs) => (
+            <ObstacleMarker key={obs.id} obs={obs} onSelect={(e) => setSelected(e)} />
           ))}
-
 
           <OrbitControls enablePan={false} minDistance={7} maxDistance={25} />
         </Canvas>
-      </div >
+      </div>
     </main>
   );
 }

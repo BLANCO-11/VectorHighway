@@ -15,3 +15,10 @@ web/package-lock.json
 *.pdb
 .kilocode
 .specify
+*.log
+.env*
+*.swp
+*.tmp
+Thumbs.db
+dist/
+coverage/
