@@ -156,3 +156,37 @@ export interface Checklist {
   name: string;
   items: ChecklistItem[];
 }
+
+export interface DeletionState {
+  selectedForDelete: string | null;
+  deletionMode: 'none' | 'single' | 'group' | 'all';
+}
+
+export interface PlacementConfig {
+  obstacleRadius: number;
+  dynamicEnabled: boolean;
+}
+
+export interface ContextMenu {
+  visible: boolean;
+  x: number;
+  y: number;
+  entityType: 'obstacle' | 'uav' | 'destination' | 'none';
+  entityId?: string;
+}
+
+export interface PathUpdate {
+  type: 'path_update';
+  droneId: string;
+  path: { lat: number; lon: number }[];
+}
+
+export interface ObstacleRemoved {
+  type: 'obstacle_removed';
+  id: string;
+}
+
+export interface EnvironmentCleared {
+  type: 'environment_cleared';
+  groupId?: string;
+}

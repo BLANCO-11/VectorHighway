@@ -14,12 +14,13 @@ interface PathLineProps {
 
 export default function PathLine({ droneId, color = '#00d4ff' }: PathLineProps) {
   const uav = useSimulationStore((s) => s.uavs[droneId]);
+  const pathOverlay = useSimulationStore((s) => s.pathOverlays[droneId]);
 
   const points = useMemo(() => {
+    if (pathOverlay && pathOverlay.length >= 2) {
+      return pathOverlay.map(p => getCartesian(p.lat, p.lon, EARTH_RADIUS, 0.15));
+    }
     if (!uav) return [];
-    const current = getCartesian(uav.lat, uav.lon, EARTH_RADIUS, 0.15);
-    const target = getCartesian(uav.targetLat, uav.targetLon, EARTH_RADIUS, 0.15);
-
     const pts: THREE.Vector3[] = [];
     const steps = 20;
     for (let i = 0; i <= steps; i++) {
@@ -29,7 +30,7 @@ export default function PathLine({ droneId, color = '#00d4ff' }: PathLineProps) 
       pts.push(getCartesian(lat, lon, EARTH_RADIUS, 0.15));
     }
     return pts;
-  }, [uav?.lat, uav?.lon, uav?.targetLat, uav?.targetLon]);
+  }, [uav?.lat, uav?.lon, uav?.targetLat, uav?.targetLon, pathOverlay]);
 
   if (!uav || points.length < 2) return null;
 

@@ -2,11 +2,21 @@
 
 #include "Geo.h"
 #include "Environment.h"
+#include "AnchorPointGraph.h"
 #include <vector>
 #include <queue>
 #include <unordered_map>
 #include <algorithm>
 #include <iostream>
+
+// ObstacleAvoidanceConfig
+struct ObstacleAvoidanceConfig {
+    double safetyMarginKm = 0.5;
+    double replanInterval = 2.0;
+    int smoothSubdivisions = 5;
+    int maxAnchorPathSearch = 5000;
+    double turnRateDegPerSec = 90.0;
+};
 
 // Phase 3: Global Routing using A* algorithm
 class GlobalPathfinder {
@@ -93,6 +103,68 @@ public:
 
         return {}; // Return empty if no path is found
     }
+};
+
+// Phase 3: ObstacleAvoidancePathfinder — anchor-point predictive pathfinding
+class ObstacleAvoidancePathfinder {
+public:
+    struct PathResult {
+        std::vector<Coordinate> waypoints;
+        std::vector<AnchorPointGraph::AnchorNode> rawNodes;
+        double totalDistanceKm = 0.0;
+        bool isValid = false;
+    };
+
+    ObstacleAvoidancePathfinder(const ObstacleAvoidanceConfig& config)
+        : config_(config) {}
+
+    PathResult computePath(
+        const Coordinate& start,
+        const Coordinate& goal,
+        const std::vector<Obstacle*>& obstacles,
+        const std::vector<NoFlyZone*>& noFlyZones = {}
+    );
+
+private:
+    struct Blocker {
+        const Obstacle* obs = nullptr;
+        const NoFlyZone* zone = nullptr;
+        double crossTrackDist = 0.0;
+        double fractionAlong = 0.0;
+    };
+
+    std::vector<Blocker> findBlockingObstacles(
+        const Coordinate& start,
+        const Coordinate& goal,
+        const std::vector<Obstacle*>& obstacles,
+        const std::vector<NoFlyZone*>& zones,
+        double safetyMarginKm
+    );
+
+    std::vector<AnchorPointGraph::AnchorNode> generateAnchorGraph(
+        const Coordinate& start,
+        const Coordinate& goal,
+        const std::vector<Blocker>& blockers
+    );
+
+    std::vector<Coordinate> catmullRomSmooth(
+        const std::vector<Coordinate>& ctrlPoints,
+        int subdivisions
+    );
+
+    std::vector<Coordinate> collisionFreeNudge(
+        const std::vector<Coordinate>& path,
+        const std::vector<Obstacle*>& obstacles,
+        double safetyMarginKm
+    );
+
+    std::vector<Coordinate> fallbackPathRRT(
+        const Coordinate& start,
+        const Coordinate& goal,
+        const std::vector<Obstacle*>& obstacles
+    );
+
+    ObstacleAvoidanceConfig config_;
 };
 
 // Phase 3: Local Avoidance (Simulating D* Lite / Field of View Recalculation behavior)

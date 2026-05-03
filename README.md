@@ -31,7 +31,7 @@ The simulation starts on port **7200** by default. To use a different port:
 ./uav_sim --port 7200
 # or
 UAV_SIM_PORT=7200 ./uav_sim
-```
+```````
 
 ## Run Tests
 
@@ -50,13 +50,13 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` in a browser.
+Open `http://localhost:3123` in a browser.
 
 ## Verify It Works
 
 1. Start the simulation engine (`./uav_sim` from `build/`)
 2. Start the web UI (`npm run dev` from `web/`)
-3. Open `http://localhost:3000`
+3. Open `http://localhost:3123`
 4. You should see:
    - A 3D globe with Earth texture
    - Two UAV markers (alpha_1 from India heading to Paris)
@@ -66,7 +66,7 @@ Open `http://localhost:3000` in a browser.
 
 ## WebSocket Configuration
 
-The WebSocket server listens by default on port **8080**. The UI connects to `ws://localhost:8080`.
+The WebSocket server listens by default on port **7200**. The UI connects to `ws://localhost:7200`.
 
 Messages use a pub/sub topic format:
 - `cmd/fleet/{id}/target` — Set target coordinates

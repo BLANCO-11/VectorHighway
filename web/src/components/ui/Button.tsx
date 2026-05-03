@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { motion } from 'framer-motion';
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'success';
 
@@ -35,11 +36,13 @@ export default function Button({
   const baseStyle = active ? activeStyle : variantStyles.secondary;
 
   return (
-    <button
+    <motion.button
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.97 }}
       className={`${sizeStyles[size]} uppercase tracking-widest rounded transition-colors ${baseStyle} ${className}`}
-      {...props}
+      {...(props as any)}
     >
       {children}
-    </button>
+    </motion.button>
   );
 }

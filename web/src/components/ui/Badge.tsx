@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { motion } from 'framer-motion';
 
 interface BadgeProps {
   status: 'CONNECTED' | 'STALE' | 'DISCONNECTED' | 'IDLE';
@@ -18,18 +19,33 @@ const STATUS_COLORS: Record<string, string> = {
 export default function Badge({ status, label, size = 'sm' }: BadgeProps) {
   const color = STATUS_COLORS[status] || '#888899';
   const dotSize = size === 'sm' ? 6 : 8;
+  const isConnected = status === 'CONNECTED';
 
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span
-        className="rounded-full"
-        style={{
-          width: dotSize,
-          height: dotSize,
-          backgroundColor: color,
-          boxShadow: `0 0 6px ${color}40`,
-        }}
-      />
+      {isConnected ? (
+        <motion.span
+          className="rounded-full"
+          style={{
+            width: dotSize,
+            height: dotSize,
+            backgroundColor: color,
+            boxShadow: `0 0 6px ${color}40`,
+          }}
+          animate={{ scale: [1, 1.4, 1], opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      ) : (
+        <span
+          className="rounded-full"
+          style={{
+            width: dotSize,
+            height: dotSize,
+            backgroundColor: color,
+            boxShadow: `0 0 6px ${color}40`,
+          }}
+        />
+      )}
       {label !== false && (
         <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color }}>
           {label || status}

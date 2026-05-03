@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { motion } from 'framer-motion';
 
 interface SliderProps {
   label: string;
@@ -27,7 +28,14 @@ export default function Slider({
     <div className="space-y-2">
       <div className="flex justify-between text-[11px] text-white/60 uppercase">
         <span>{label}</span>
-        <span>{formatValue ? formatValue(value) : value.toFixed(2)}</span>
+        <motion.span
+          key={Math.round(value * 1000)}
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          {formatValue ? formatValue(value) : value.toFixed(2)}
+        </motion.span>
       </div>
       <input
         type="range"

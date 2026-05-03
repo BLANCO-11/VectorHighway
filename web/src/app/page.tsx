@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useSimulationStore } from '../store/useSimulationStore';
 import { useSimulationWebSocket } from '../useSimulationWebSocket';
 import Earth from '../components/map/Earth';
@@ -12,6 +13,7 @@ import DestinationMarker from '../components/map/DestinationMarker';
 import ConnectionLines from '../components/map/ConnectionLines';
 import RadarOverlay from '../components/map/RadarOverlay';
 import PathLine from '../components/map/PathLine';
+import GlobeBorders from '../components/map/GlobeBorders';
 import ControlPanel from '../components/panels/ControlPanel';
 import SwarmPanel from '../components/panels/SwarmPanel';
 import TelemetryPanel from '../components/panels/TelemetryPanel';
@@ -46,6 +48,9 @@ export default function SimulatorPage() {
   const selectedEntity = useSimulationStore((s) => s.selectedEntity);
   const activeGroup = useSimulationStore((s) => s.activeGroup);
   const clickMode = useSimulationStore((s) => s.clickMode);
+  const obstacleRadius = useSimulationStore((s) => s.obstacleRadius);
+  const pathOverlays = useSimulationStore((s) => s.pathOverlays);
+  const setPathOverlay = useSimulationStore((s) => s.setPathOverlay);
 
   const [droneHistory, setDroneHistory] = React.useState<Record<string, THREE.Vector3[]>>({});
 
@@ -95,7 +100,7 @@ export default function SimulatorPage() {
           : `cmd/fleet/${activeGroup}/target`;
       msg = JSON.stringify({ topic, payload: { lat, lon } });
     } else if (clickMode === 'obstacle') {
-      msg = JSON.stringify({ topic: 'cmd/environment/obstacle', payload: { lat, lon, radius: 250.0, groupId: activeGroup } });
+      msg = JSON.stringify({ topic: 'cmd/environment/obstacle', payload: { lat, lon, radius: obstacleRadius, groupId: activeGroup } });
     } else if (clickMode === 'spawn_drone') {
       msg = JSON.stringify({ topic: 'cmd/fleet/spawn', payload: { lat, lon, groupId: activeGroup } });
     }
@@ -110,7 +115,12 @@ export default function SimulatorPage() {
   return (
     <main className="relative flex h-screen w-full bg-[#0a0a0f] overflow-hidden text-[#e0e0e0]">
       {/* Top Status Bar */}
-      <div className="absolute top-0 left-0 right-0 z-30 h-10 glass flex items-center justify-between px-4 rounded-none">
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 150, damping: 15 }}
+        className="absolute top-0 left-0 right-0 z-30 h-10 glass flex items-center justify-between px-4 rounded-none"
+      >
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-light tracking-widest text-white/90">VECTORHIGHWAY</h1>
           <Badge status={isConnected ? 'CONNECTED' : 'DISCONNECTED'} size="sm" />
@@ -120,29 +130,38 @@ export default function SimulatorPage() {
           <span>UAVs: {uavs.length}</span>
           <span>Group: {activeGroup.toUpperCase()}</span>
         </div>
-      </div>
+      </motion.div>
 
       {/* Left Sidebar */}
-      <div className="absolute left-3 top-14 bottom-3 z-20 w-80 flex flex-col gap-3 overflow-y-auto pr-1">
-        <Card>
-          <SwarmPanel />
-          <ControlPanel sendMessage={sendMessage} />
-        </Card>
+      <AnimatePresence mode="popLayout">
+        <motion.div
+          key="sidebar"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+          className="absolute left-3 top-14 bottom-3 z-20 w-80 flex flex-col gap-3 overflow-y-auto pr-1"
+        >
+          <Card>
+            <SwarmPanel />
+            <ControlPanel sendMessage={sendMessage} />
+          </Card>
 
-        <MissionPanel sendMessage={sendMessage} />
+          <MissionPanel sendMessage={sendMessage} />
 
-        <TelemetryPanel />
+          <TelemetryPanel />
 
-        <HealthPanel />
+          <HealthPanel />
 
-        <EmergencyPanel />
+          <EmergencyPanel />
 
-        <ChecklistPanel />
+          <ChecklistPanel />
 
-        <BatteryChart />
+          <BatteryChart />
 
-        <FlightLogPanel sendMessage={sendMessage} />
-      </div>
+          <FlightLogPanel sendMessage={sendMessage} />
+        </motion.div>
+      </AnimatePresence>
 
       {/* Globe Area */}
       <div className="grow cursor-crosshair">
@@ -154,6 +173,7 @@ export default function SimulatorPage() {
           <Stars radius={300} depth={60} count={20000} factor={7} saturation={0} fade speed={1} />
 
           <Earth onClick={handleGlobeClick} />
+          <GlobeBorders />
           <RadarOverlay enabled={true} />
 
           {uavs.map((uav) => (
@@ -175,6 +195,12 @@ export default function SimulatorPage() {
           {obstacles.map((obs) => (
             <ObstacleMarker key={obs.id} obs={obs} onSelect={(e) => useSimulationStore.getState().setSelectedEntity(e)} />
           ))}
+
+          {Object.entries(pathOverlays).map(([droneId, path]) =>
+            path.length >= 2 ? (
+              <PathLine key={`path-${droneId}`} droneId={droneId} color={getColorForGroup(droneId)} />
+            ) : null
+          )}
 
           <OrbitControls enablePan={false} minDistance={7} maxDistance={25} />
         </Canvas>

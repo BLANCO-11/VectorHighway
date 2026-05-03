@@ -191,6 +191,25 @@ public:
                         cmd.missionJson = msgPayload.dump();
                         context->pushCommand(cmd);
                     }
+                    else if (topic == "cmd/environment/remove") {
+                        CommandEvent cmd;
+                        cmd.type = "remove";
+                        cmd.targetId = msgPayload["id"].get<std::string>();
+                        cmd.missionJson = msgPayload.contains("type") ? msgPayload["type"].get<std::string>() : "obstacle";
+                        context->pushCommand(cmd);
+                    }
+                    else if (topic == "cmd/environment/clear_group") {
+                        CommandEvent cmd;
+                        cmd.type = "clear_group";
+                        cmd.groupId = msgPayload["groupId"].get<std::string>();
+                        cmd.missionJson = msgPayload.contains("type") ? msgPayload["type"].get<std::string>() : "obstacle";
+                        context->pushCommand(cmd);
+                    }
+                    else if (topic == "cmd/environment/clear_all") {
+                        CommandEvent cmd;
+                        cmd.type = "clear_all";
+                        context->pushCommand(cmd);
+                    }
                 }
             } catch (const std::exception& e) {
                 std::cout << "[WebSocket] JSON Parse Error: " << e.what() << std::endl;

@@ -1,9 +1,17 @@
 "use client";
 
 import React from 'react';
+import { motion, useSpring, useTransform } from 'framer-motion';
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import { useSimulationStore } from '../../store/useSimulationStore';
+
+function AnimatedNumber({ value, decimals = 1 }: { value: number; decimals?: number }) {
+  const spring = useSpring(value, { stiffness: 80, damping: 15 });
+  const display = useTransform(spring, (v) => v.toFixed(decimals));
+  React.useEffect(() => { spring.set(value); }, [value, spring]);
+  return <motion.span className="font-mono text-white text-xs">{display}</motion.span>;
+}
 
 export default function TelemetryPanel() {
   const selected = useSimulationStore((s) => s.selectedEntity);
@@ -36,27 +44,27 @@ export default function TelemetryPanel() {
         <div className="grid grid-cols-2 gap-2 text-sm">
           <div>
             <p className="text-white/40 text-[9px] uppercase">Lat</p>
-            <p className="font-mono text-white text-xs">{uav.lat.toFixed(4)}</p>
+            <AnimatedNumber value={uav.lat} decimals={4} />
           </div>
           <div>
             <p className="text-white/40 text-[9px] uppercase">Lon</p>
-            <p className="font-mono text-white text-xs">{uav.lon.toFixed(4)}</p>
+            <AnimatedNumber value={uav.lon} decimals={4} />
           </div>
           <div>
             <p className="text-white/40 text-[9px] uppercase">Heading</p>
-            <p className="font-mono text-white text-xs">{uav.heading.toFixed(1)}°</p>
+            <AnimatedNumber value={uav.heading} decimals={1} />
           </div>
           <div>
             <p className="text-white/40 text-[9px] uppercase">Battery</p>
-            <p className="font-mono text-white text-xs">{uav.battery.toFixed(1)}%</p>
+            <AnimatedNumber value={uav.battery} decimals={1} />
           </div>
           <div>
             <p className="text-white/40 text-[9px] uppercase">Speed</p>
-            <p className="font-mono text-white text-xs">{(uav as any).speed?.toFixed(3) ?? '-'}</p>
+            <motion.span className="font-mono text-white text-xs">{(uav as any).speed?.toFixed(3) ?? '-'}</motion.span>
           </div>
           <div>
             <p className="text-white/40 text-[9px] uppercase">Mission</p>
-            <p className="font-mono text-white text-xs">{(uav as any).missionState ?? 'IDLE'}</p>
+            <span className="font-mono text-white text-xs">{(uav as any).missionState ?? 'IDLE'}</span>
           </div>
         </div>
       </div>

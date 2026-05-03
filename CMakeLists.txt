@@ -66,6 +66,9 @@ add_executable(uav_sim
     src/LinkManager.cpp 
     src/AuthManager.cpp 
     src/TenantManager.cpp 
+    src/geo_utils.cpp
+    src/anchor_point_graph.cpp
+    src/path_smoother.cpp
 )
 
 target_compile_definitions(uav_sim PRIVATE 

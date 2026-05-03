@@ -85,6 +85,9 @@ interface SimulationStore {
   };
   mission: MissionState;
   replay: ReplayState;
+  obstacleRadius: number;
+  deletionMode: 'none' | 'single' | 'group' | 'all';
+  pathOverlays: Record<string, { lat: number; lon: number }[]>;
 
   setUavs: (uavs: Record<string, UAV>) => void;
   updateUav: (id: string, data: Partial<UAV>) => void;
@@ -102,6 +105,13 @@ interface SimulationStore {
   setHealth: (health: { engineTickHz: number; wsConnectionCount: number }) => void;
   setMissionState: (state: Partial<MissionState>) => void;
   setReplay: (state: Partial<ReplayState>) => void;
+  setObstacleRadius: (radius: number) => void;
+  setDeletionMode: (mode: 'none' | 'single' | 'group' | 'all') => void;
+  removeObstacle: (id: string) => void;
+  clearGroupObstacles: (groupId: string) => void;
+  clearAllObstacles: () => void;
+  setPathOverlay: (droneId: string, path: { lat: number; lon: number }[]) => void;
+  clearPathOverlay: (droneId: string) => void;
 }
 
 export const useSimulationStore = create<SimulationStore>((set) => ({
@@ -135,6 +145,9 @@ export const useSimulationStore = create<SimulationStore>((set) => ({
     replayTime: 0,
     availableLogs: [],
   },
+  obstacleRadius: 250,
+  deletionMode: 'none',
+  pathOverlays: {},
 
   setUavs: (uavs) => set({ uavs }),
   updateUav: (id, data) =>
@@ -169,4 +182,29 @@ export const useSimulationStore = create<SimulationStore>((set) => ({
     set((prev) => ({ mission: { ...prev.mission, ...state } })),
   setReplay: (state) =>
     set((prev) => ({ replay: { ...prev.replay, ...state } })),
+  setObstacleRadius: (radius) => set({ obstacleRadius: radius }),
+  setDeletionMode: (mode) => set({ deletionMode: mode }),
+  removeObstacle: (id) =>
+    set((state) => {
+      const newObs = { ...state.obstacles };
+      delete newObs[id];
+      return { obstacles: newObs };
+    }),
+  clearGroupObstacles: (groupId) =>
+    set((state) => {
+      const newObs: Record<string, Obstacle> = {};
+      for (const [k, v] of Object.entries(state.obstacles)) {
+        if (v.groupId !== groupId) newObs[k] = v;
+      }
+      return { obstacles: newObs };
+    }),
+  clearAllObstacles: () => set({ obstacles: {} }),
+  setPathOverlay: (droneId, path) =>
+    set((state) => ({ pathOverlays: { ...state.pathOverlays, [droneId]: path } })),
+  clearPathOverlay: (droneId) =>
+    set((state) => {
+      const newPaths = { ...state.pathOverlays };
+      delete newPaths[droneId];
+      return { pathOverlays: newPaths };
+    }),
 }));

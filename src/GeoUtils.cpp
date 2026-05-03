@@ -51,14 +51,6 @@ double haversineDistance(double lat1, double lon1, double lat2, double lon2) {
     return 6371.0 * c;
 }
 
-double crossTrackDistance(const Coordinate& point, const Coordinate& segmentStart,
-                           const Coordinate& segmentEnd) {
-    double d13 = point.distanceTo(segmentStart) / 6371.0;
-    double theta13 = toRadians(segmentStart.bearingTo(point));
-    double theta12 = toRadians(segmentStart.bearingTo(segmentEnd));
-    return std::asin(std::sin(d13) * std::sin(theta13 - theta12)) * 6371.0;
-}
-
 Coordinate midpoint(const Coordinate& a, const Coordinate& b) {
     return Coordinate(
         (a.latitude + b.latitude) / 2.0,

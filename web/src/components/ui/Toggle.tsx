@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { motion } from 'framer-motion';
 
 interface ToggleProps {
   enabled: boolean;
@@ -22,9 +23,10 @@ export default function Toggle({ enabled, onChange, label, accentColor = '#00d4f
           backgroundColor: enabled ? accentColor : 'rgba(255,255,255,0.15)',
         }}
       >
-        <span
-          className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 shadow-sm"
-          style={{ transform: enabled ? 'translateX(20px)' : 'translateX(0)' }}
+        <motion.span
+          className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm"
+          animate={{ x: enabled ? 20 : 0 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         />
       </button>
       {label && <span className="text-xs text-[#888899]">{label}</span>}

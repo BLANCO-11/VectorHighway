@@ -3,7 +3,7 @@
 import React from 'react';
 import Slider from '../ui/Slider';
 import Button from '../ui/Button';
-import { Crosshair, PlusCircle, Navigation } from 'lucide-react';
+import { Crosshair, PlusCircle, Navigation, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { useSimulationStore } from '../../store/useSimulationStore';
 
 type ClickMode = 'target' | 'obstacle' | 'spawn_drone';
@@ -18,12 +18,23 @@ export default function ControlPanel({ sendMessage }: ControlPanelProps) {
   const clickMode = useSimulationStore((s) => s.clickMode);
   const setClickMode = useSimulationStore((s) => s.setClickMode);
   const activeGroup = useSimulationStore((s) => s.activeGroup);
+  const obstacleRadius = useSimulationStore((s) => s.obstacleRadius);
+  const setObstacleRadius = useSimulationStore((s) => s.setObstacleRadius);
+  const setDeletionMode = useSimulationStore((s) => s.setDeletionMode);
 
   const handleParamChange = (key: keyof typeof params, val: number) => {
     setParams({ [key]: val });
     sendMessage(
       JSON.stringify({ topic: `cmd/fleet/${activeGroup}/control`, payload: { [key]: val } })
     );
+  };
+
+  const handleClearGroup = () => {
+    sendMessage(JSON.stringify({ topic: 'cmd/environment/clear_group', payload: { groupId: activeGroup, type: 'obstacle' } }));
+  };
+
+  const handleClearAll = () => {
+    sendMessage(JSON.stringify({ topic: 'cmd/environment/clear_all', payload: {} }));
   };
 
   return (
@@ -48,8 +59,18 @@ export default function ControlPanel({ sendMessage }: ControlPanelProps) {
         accentColor="accent-red-500"
         onChange={(v) => handleParamChange('batteryDrain', v)}
       />
+      <Slider
+        label="Obstacle Radius"
+        value={obstacleRadius}
+        min={10}
+        max={1000}
+        step={10}
+        formatValue={(v) => `${v.toFixed(0)}m`}
+        accentColor="accent-orange-500"
+        onChange={(v) => setObstacleRadius(v)}
+      />
 
-      <div className="pt-4 flex gap-2 border-t border-white/10">
+      <div className="pt-4 flex gap-2 flex-wrap border-t border-white/10">
         <Button
           variant="primary"
           active={clickMode === 'target'}
@@ -70,6 +91,14 @@ export default function ControlPanel({ sendMessage }: ControlPanelProps) {
           onClick={() => setClickMode('spawn_drone')}
         >
           <Navigation className="inline mr-2" size={14} /> Spawn
+        </Button>
+      </div>
+      <div className="pt-2 flex gap-2 flex-wrap border-t border-white/10">
+        <Button variant="danger" size="sm" onClick={handleClearGroup}>
+          <Trash2 className="inline mr-1" size={12} /> Clear Group
+        </Button>
+        <Button variant="danger" size="sm" onClick={handleClearAll}>
+          <AlertTriangle className="inline mr-1" size={12} /> Clear All
         </Button>
       </div>
     </div>

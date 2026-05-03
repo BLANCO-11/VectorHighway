@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { motion } from 'framer-motion';
 
 interface ProgressBarProps {
   value: number;
@@ -41,9 +42,12 @@ export default function ProgressBar({
         className="w-full rounded-full overflow-hidden"
         style={{ height, backgroundColor: 'rgba(255,255,255,0.08)' }}
       >
-        <div
-          className="h-full rounded-full transition-all duration-300"
-          style={{ width: `${pct}%`, backgroundColor: barColor }}
+        <motion.div
+          className="h-full rounded-full"
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+          style={{ backgroundColor: barColor }}
         />
       </div>
     </div>

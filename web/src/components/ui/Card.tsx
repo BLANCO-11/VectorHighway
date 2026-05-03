@@ -15,8 +15,11 @@ export default function Card({ children, className = '', animate = true }: CardP
   if (animate) {
     return (
       <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
+        layout
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ scale: 1.01, boxShadow: '0 0 12px rgba(0,212,255,0.15)' }}
+        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
         className={`${baseClasses} ${className}`}
       >
         {children}
