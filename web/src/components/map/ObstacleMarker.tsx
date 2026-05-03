@@ -52,9 +52,11 @@ interface SelectedEntity {
 export default function ObstacleMarker({
   obs,
   onSelect,
+  onContext,
 }: {
   obs: ObstacleMarkerState;
   onSelect: (e: SelectedEntity) => void;
+  onContext?: (e: any) => void;
 }) {
   const pos = useMemo(() => getCartesian(obs.lat, obs.lon, EARTH_RADIUS), [obs.lat, obs.lon]);
   const color = obs.groupId ? getColorForGroup(obs.groupId) : '#ff0000';
@@ -72,6 +74,10 @@ export default function ObstacleMarker({
       onClick={(e) => {
         e.stopPropagation();
         onSelect({ type: 'obstacle', id: obs.id, lat: obs.lat, lon: obs.lon });
+      }}
+      onContextMenu={(e) => {
+        e.stopPropagation();
+        onContext?.(e);
       }}
     >
       <mesh visible={false}>

@@ -14,8 +14,25 @@ export default function Earth({ onClick }: { onClick?: (lat: number, lon: number
     'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg'
   );
   const atmosphereRef = useRef<THREE.Mesh>(null);
+  const pointerPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handlePointerDown = (e: any) => {
+    pointerPosRef.current = {
+      x: e.sourceEvent?.clientX ?? e.clientX ?? 0,
+      y: e.sourceEvent?.clientY ?? e.clientY ?? 0,
+    };
+  };
 
   const handleClick = (e: any) => {
+    if (pointerPosRef.current && e.sourceEvent) {
+      const cx = e.sourceEvent.clientX;
+      const cy = e.sourceEvent.clientY;
+      const dx = cx - pointerPosRef.current.x;
+      const dy = cy - pointerPosRef.current.y;
+      pointerPosRef.current = null;
+      if (Math.sqrt(dx * dx + dy * dy) > 5) return;
+    }
+    pointerPosRef.current = null;
     e.stopPropagation();
     const pt = e.point.clone().normalize();
     const phi = Math.acos(pt.y);
@@ -30,7 +47,7 @@ export default function Earth({ onClick }: { onClick?: (lat: number, lon: number
 
   return (
     <group>
-      <mesh onClick={handleClick}>
+      <mesh onClick={handleClick} onPointerDown={handlePointerDown}>
         <sphereGeometry args={[EARTH_RADIUS, 64, 64]} />
         <meshStandardMaterial map={texture} roughness={0.4} metalness={0.1} emissive="#112244" emissiveIntensity={0.5} />
       </mesh>

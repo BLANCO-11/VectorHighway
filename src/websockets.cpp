@@ -210,6 +210,12 @@ public:
                         cmd.type = "clear_all";
                         context->pushCommand(cmd);
                     }
+                    else if (topic == "cmd/system/speed") {
+                        CommandEvent cmd;
+                        cmd.type = "sim_speed";
+                        cmd.speed = msgPayload["speed"].get<double>();
+                        context->pushCommand(cmd);
+                    }
                 }
             } catch (const std::exception& e) {
                 std::cout << "[WebSocket] JSON Parse Error: " << e.what() << std::endl;

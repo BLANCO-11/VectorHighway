@@ -99,6 +99,9 @@ int main(int argc, char* argv[]) {
     obstacles.push_back(make_unique<StaticObstacle>(Coordinate(48.0, 2.0, 0.0), 5.0));
     obstacles.push_back(make_unique<DynamicObstacle>(Coordinate(47.5, 2.1, 0.0), 2.0, 1.5, 90.0));
 
+    double simSpeedMultiplier = 1.0;
+    constexpr double BASE_TICK_HZ = 10.0;
+
     ObstacleAvoidanceConfig pathConfig;
     pathConfig.safetyMarginKm = 0.5;
     pathConfig.replanInterval = 2.0;
@@ -117,8 +120,9 @@ int main(int argc, char* argv[]) {
     auto lastTime = std::chrono::high_resolution_clock::now();
     while (true) {
         auto currentTime = std::chrono::high_resolution_clock::now();
-        double deltaTime = std::chrono::duration<double>(currentTime - lastTime).count();
-        if (deltaTime <= 0) deltaTime = 0.1;
+        double rawDeltaTime = std::chrono::duration<double>(currentTime - lastTime).count();
+        if (rawDeltaTime <= 0) rawDeltaTime = 0.1;
+        double deltaTime = rawDeltaTime * simSpeedMultiplier;
         lastTime = currentTime;
 
         {
@@ -160,6 +164,15 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     swarm.try_emplace(id, make_unique<UAV>(spawnCoord, 0.0, 0.25, 90.0, cmd.groupId), spawnCoord, initialTarget, 0.25);
+                    auto& dps = dronePaths[id];
+                    auto result = pathfinder.computePath(spawnCoord, initialTarget, collectPtrs(obstacles), {});
+                    dps.path = result;
+                    dps.currentWaypointIndex = 0;
+                    dps.replanTimer = 0.0;
+                    dps.previousTarget = initialTarget;
+                    if (result.isValid && !result.waypoints.empty()) {
+                        broadcastPathUpdate(server, id, result.waypoints);
+                    }
                     cout << ">>> NEW DRONE SPAWNED: " << id << " IN GROUP " << cmd.groupId << " <<<" << endl;
                 } else if (cmd.type == "obstacle") {
                     auto obs = make_unique<StaticObstacle>(Coordinate(cmd.lat, cmd.lon, 0.0), cmd.radius, cmd.groupId);
@@ -171,14 +184,18 @@ int main(int argc, char* argv[]) {
                     string id = cmd.targetId;
                     int idx = -1;
                     for (size_t i = 0; i < obstacles.size(); ++i) {
-                        if (id == "obs_" + to_string(i + 1)) { idx = static_cast<int>(i); break; }
+                        string expectedId = "obs_" + to_string(i + 1);
+                        if (id == expectedId) { idx = static_cast<int>(i); break; }
                     }
                     if (idx >= 0) {
+                        cout << "[cmd] REMOVE: id=" << id << " idx=" << idx << endl;
                         obstacles.erase(obstacles.begin() + idx);
                         json rsp;
                         rsp["type"] = "obstacle_removed";
                         rsp["id"] = id;
                         server.broadcast(rsp.dump());
+                    } else {
+                        cout << "[cmd] REMOVE: id=" << id << " NOT FOUND (obstacles=" << obstacles.size() << ")" << endl;
                     }
                 } else if (cmd.type == "clear_group") {
                     string gid = cmd.groupId;
@@ -194,6 +211,9 @@ int main(int argc, char* argv[]) {
                     json rsp;
                     rsp["type"] = "environment_cleared";
                     server.broadcast(rsp.dump());
+                } else if (cmd.type == "sim_speed") {
+                    simSpeedMultiplier = max(0.1, min(10.0, cmd.speed));
+                    cout << "[cmd] SIM SPEED: " << simSpeedMultiplier << "x" << endl;
                 }
             }
 
@@ -278,7 +298,7 @@ int main(int argc, char* argv[]) {
                     if (diff > 25.0) {
                         uav.targetSpeed = 0.0;
                     } else {
-                        uav.targetSpeed = ctx.assignedSpeed;
+                        uav.targetSpeed = ctx.assignedSpeed * simSpeedMultiplier;
                     }
 
                     uav.update(deltaTime, 0.0);

@@ -91,26 +91,26 @@ export default function GlobeBorders() {
 
   useFrame(({ camera }) => {
     cameraRef.current = camera;
+    const dist = camera.position.length();
+    let countryOpacity = 0.4;
+    let stateOpacity = 0.0;
+    if (dist >= 18) {
+      countryOpacity = 0.15;
+      stateOpacity = 0.0;
+    } else if (dist >= 10) {
+      countryOpacity = 0.4;
+      stateOpacity = 0.0;
+    } else {
+      countryOpacity = 0.6;
+      stateOpacity = 0.3;
+    }
     if (countryLinesRef.current) {
-      const dist = camera.position.length();
-      let countryOpacity = 0.4;
-      let stateOpacity = 0.0;
-      if (dist >= 18) {
-        countryOpacity = 0.15;
-        stateOpacity = 0.0;
-      } else if (dist >= 10) {
-        countryOpacity = 0.4;
-        stateOpacity = 0.0;
-      } else {
-        countryOpacity = 0.6;
-        stateOpacity = 0.3;
-      }
-      if (countryLinesRef.current.material) {
-        (countryLinesRef.current.material as THREE.LineBasicMaterial).opacity = countryOpacity;
-      }
-      if (stateLinesRef.current && stateLinesRef.current.material) {
-        (stateLinesRef.current.material as THREE.LineBasicMaterial).opacity = stateOpacity;
-      }
+      const mat = countryLinesRef.current.material as THREE.LineBasicMaterial;
+      if (Math.abs(mat.opacity - countryOpacity) > 0.01) mat.opacity = countryOpacity;
+    }
+    if (stateLinesRef.current) {
+      const mat = stateLinesRef.current.material as THREE.LineBasicMaterial;
+      if (Math.abs(mat.opacity - stateOpacity) > 0.01) mat.opacity = stateOpacity;
     }
   });
 

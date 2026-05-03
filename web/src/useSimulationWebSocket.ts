@@ -46,6 +46,8 @@ export const useSimulationWebSocket = (url: string = 'ws://localhost:7200') => {
   const delayRef = useRef(1000);
   const uavsRef = useRef<Record<string, UAVState>>({});
   const obstaclesRef = useRef<Record<string, ObstacleState>>({});
+  const renderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const store = useSimulationStore;
 
   const sendMessage = useCallback((msg: string) => {
     const ws = wsRef.current;
@@ -94,56 +96,46 @@ export const useSimulationWebSocket = (url: string = 'ws://localhost:7200') => {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'uav_update') {
-            if (uavsRef.current) uavsRef.current = { ...uavsRef.current, [data.id]: data };
-            setUavs((prev) => ({ ...prev, [data.id]: data }));
+            uavsRef.current = { ...uavsRef.current, [data.id]: data };
+            scheduleRender();
           } else if (data.type === 'obstacle_update') {
-            if (obstaclesRef.current) obstaclesRef.current = { ...obstaclesRef.current, [data.id]: data };
-            setObstacles((prev) => ({ ...prev, [data.id]: data }));
+            obstaclesRef.current = { ...obstaclesRef.current, [data.id]: data };
+            scheduleRender();
           } else if (data.type === 'charging_station_update') {
             setChargingStations((prev) => ({ ...prev, [data.id]: data }));
           } else if (data.type === 'connection_status') {
             console.log('[ws] connection_status:', data.connected);
             setIsConnected(data.connected);
           } else if (data.type === 'obstacle_removed') {
-            useSimulationStore.getState().removeObstacle(data.id);
-            if (obstaclesRef.current) {
-              const newObs = { ...obstaclesRef.current };
-              delete newObs[data.id];
-              obstaclesRef.current = newObs;
-            }
-            setObstacles((prev) => {
-              const newObs = { ...prev };
-              delete newObs[data.id];
-              return newObs;
-            });
+            store.getState().removeObstacle(data.id);
+            delete obstaclesRef.current[data.id];
+            scheduleRender();
           } else if (data.type === 'environment_cleared') {
             if (data.groupId) {
-              useSimulationStore.getState().clearGroupObstacles(data.groupId);
-              if (obstaclesRef.current) {
-                const newObs: Record<string, ObstacleState> = {};
-                for (const [k, v] of Object.entries(obstaclesRef.current)) {
-                  if (v.groupId !== data.groupId) newObs[k] = v;
-                }
-                obstaclesRef.current = newObs;
+              store.getState().clearGroupObstacles(data.groupId);
+              for (const k of Object.keys(obstaclesRef.current)) {
+                if (obstaclesRef.current[k].groupId === data.groupId) delete obstaclesRef.current[k];
               }
-              setObstacles((prev) => {
-                const newObs: Record<string, ObstacleState> = {};
-                for (const [k, v] of Object.entries(prev)) {
-                  if (v.groupId !== data.groupId) newObs[k] = v;
-                }
-                return newObs;
-              });
             } else {
-              useSimulationStore.getState().clearAllObstacles();
+              store.getState().clearAllObstacles();
               obstaclesRef.current = {};
-              setObstacles({});
             }
+            scheduleRender();
           } else if (data.type === 'path_update') {
-            useSimulationStore.getState().setPathOverlay(data.droneId, data.path);
+            store.getState().setPathOverlay(data.droneId, data.path);
           }
         } catch (error) {
           console.error('Failed to parse message:', error);
         }
+      };
+
+      const scheduleRender = () => {
+        if (renderTimerRef.current) return;
+        renderTimerRef.current = setTimeout(() => {
+          renderTimerRef.current = null;
+          setUavs({ ...uavsRef.current });
+          setObstacles({ ...obstaclesRef.current });
+        }, 50);
       };
 
       ws.onerror = () => {
@@ -155,6 +147,7 @@ export const useSimulationWebSocket = (url: string = 'ws://localhost:7200') => {
 
     return () => {
       cancelled = true;
+      if (renderTimerRef.current) clearTimeout(renderTimerRef.current);
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (wsRef.current) {
         wsRef.current.onopen = null;

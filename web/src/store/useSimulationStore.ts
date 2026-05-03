@@ -88,6 +88,7 @@ interface SimulationStore {
   obstacleRadius: number;
   deletionMode: 'none' | 'single' | 'group' | 'all';
   pathOverlays: Record<string, { lat: number; lon: number }[]>;
+  simSpeed: number;
 
   setUavs: (uavs: Record<string, UAV>) => void;
   updateUav: (id: string, data: Partial<UAV>) => void;
@@ -112,6 +113,9 @@ interface SimulationStore {
   clearAllObstacles: () => void;
   setPathOverlay: (droneId: string, path: { lat: number; lon: number }[]) => void;
   clearPathOverlay: (droneId: string) => void;
+  setSimSpeed: (speed: number) => void;
+  pendingContextDelete: { id: string; type: string; x?: number; y?: number } | null;
+  setPendingContextDelete: (target: { id: string; type: string; x?: number; y?: number } | null) => void;
 }
 
 export const useSimulationStore = create<SimulationStore>((set) => ({
@@ -148,6 +152,8 @@ export const useSimulationStore = create<SimulationStore>((set) => ({
   obstacleRadius: 250,
   deletionMode: 'none',
   pathOverlays: {},
+  simSpeed: 1,
+  pendingContextDelete: null,
 
   setUavs: (uavs) => set({ uavs }),
   updateUav: (id, data) =>
@@ -207,4 +213,6 @@ export const useSimulationStore = create<SimulationStore>((set) => ({
       delete newPaths[droneId];
       return { pathOverlays: newPaths };
     }),
+  setSimSpeed: (speed) => set({ simSpeed: speed }),
+  setPendingContextDelete: (target) => set({ pendingContextDelete: target }),
 }));
