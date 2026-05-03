@@ -2,6 +2,7 @@
 
 #include "Geo.h"
 #include "Environment.h"
+#include "Types.h"
 #include <iostream>
 
 // Phase 4: UAV Agent with Kinematics and Battery
@@ -16,7 +17,10 @@ public:
     double turnRate;         // Turn rate in degrees/s
     double batteryLevel;     // Battery percentage (100.0 to 0.0)
     double batteryDrainRate; // Base drain rate % per second
+    MissionState missionState = MissionState::IDLE;
+    int currentWaypointIndex = 0;
 
+    UAV() = default;
     UAV(Coordinate startPos, double startHeading, double uavSpeed, double uavTurnRate, std::string gId = "alpha")
         : groupId(gId),
           position(startPos),

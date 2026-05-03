@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Button from '../ui/Button';
+import { useSimulationStore } from '../../store/useSimulationStore';
 
 const GROUP_COLORS: Record<string, string> = {
   alpha: '#32CD32',
@@ -18,30 +19,30 @@ const getColorForGroup = (group: string) => {
   return '#' + '00000'.substring(0, 6 - c.length) + c;
 };
 
-interface SwarmPanelProps {
-  groups: string[];
-  activeGroup: string;
-  newGroup: string;
-  onNewGroupChange: (val: string) => void;
-  onAddGroup: () => void;
-  onSetActiveGroup: (group: string) => void;
-}
+export default function SwarmPanel() {
+  const groups = useSimulationStore((s) => s.groups);
+  const activeGroup = useSimulationStore((s) => s.activeGroup);
+  const setActiveGroup = useSimulationStore((s) => s.setActiveGroup);
+  const addGroup = useSimulationStore((s) => s.addGroup);
 
-export default function SwarmPanel({
-  groups,
-  activeGroup,
-  newGroup,
-  onNewGroupChange,
-  onAddGroup,
-  onSetActiveGroup,
-}: SwarmPanelProps) {
+  const [newGroup, setNewGroup] = React.useState('');
+
+  const handleAddGroup = () => {
+    const g = newGroup.trim().toLowerCase();
+    if (g) {
+      addGroup(g);
+      setActiveGroup(g);
+      setNewGroup('');
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2 mb-6">
       <div className="flex flex-wrap gap-2">
         {groups.map((g) => (
           <button
             key={g}
-            onClick={() => onSetActiveGroup(g)}
+            onClick={() => setActiveGroup(g)}
             className={`flex-1 text-[10px] uppercase font-bold tracking-wider py-1.5 px-2 rounded transition-all border ${
               activeGroup === g
                 ? 'border-white text-white'
@@ -61,14 +62,14 @@ export default function SwarmPanel({
         <input
           type="text"
           value={newGroup}
-          onChange={(e) => onNewGroupChange(e.target.value)}
+          onChange={(e) => setNewGroup(e.target.value)}
           placeholder="NEW SWARM GROUP"
           className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-white/30 uppercase tracking-widest"
           onKeyDown={(e) => {
-            if (e.key === 'Enter') onAddGroup();
+            if (e.key === 'Enter') handleAddGroup();
           }}
         />
-        <Button size="sm" onClick={onAddGroup}>
+        <Button size="sm" onClick={handleAddGroup}>
           Add
         </Button>
       </div>

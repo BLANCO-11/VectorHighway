@@ -55,6 +55,17 @@ include_directories(${json_SOURCE_DIR}/single_include)
 add_executable(uav_sim 
     src/exec.cpp 
     src/websockets.cpp 
+    src/Planner.cpp 
+    src/Mission.cpp 
+    src/FlightRecorder.cpp 
+    src/HealthMonitor.cpp 
+    src/GeoUtils.cpp 
+    src/MirrorContext.cpp 
+    src/WeatherAPI.cpp 
+    src/Payload.cpp 
+    src/LinkManager.cpp 
+    src/AuthManager.cpp 
+    src/TenantManager.cpp 
 )
 
 target_compile_definitions(uav_sim PRIVATE 
@@ -66,7 +77,7 @@ target_compile_definitions(uav_sim PRIVATE
 )
 
 find_package(Threads REQUIRED)
-target_link_libraries(uav_sim PRIVATE Threads::Threads)
+target_link_libraries(uav_sim PRIVATE Threads::Threads stdc++fs)
 
 # Ensure Windows Sockets are linked for MinGW and the Windows version is set
 if(WIN32)
@@ -76,7 +87,7 @@ endif()
 
 # Separate executable for tests
 if(BUILD_TESTING)
-    add_executable(uav_tests src/tests.cpp)
+    add_executable(uav_tests src/tests.cpp src/Planner.cpp src/Mission.cpp src/FlightRecorder.cpp src/HealthMonitor.cpp src/GeoUtils.cpp src/MirrorContext.cpp src/WeatherAPI.cpp src/Payload.cpp src/LinkManager.cpp src/AuthManager.cpp src/TenantManager.cpp)
     target_link_libraries(uav_tests PRIVATE Catch2::Catch2WithMain Threads::Threads)
     target_compile_definitions(uav_tests PRIVATE ASIO_STANDALONE _WEBSOCKETPP_CPP11_STL_ _WEBSOCKETPP_DISABLE_BOOST_THREAD_SUPPORT _WEBSOCKETPP_DISABLE_BOOST_ASIO _WEBSOCKETPP_CPP11_THREAD_)
     include(CTest)

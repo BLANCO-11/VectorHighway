@@ -4,29 +4,28 @@ import React from 'react';
 import Slider from '../ui/Slider';
 import Button from '../ui/Button';
 import { Crosshair, PlusCircle, Navigation } from 'lucide-react';
-
-interface ControlParams {
-  speed: number;
-  batteryDrain: number;
-  turnRate: number;
-  chargingRate: number;
-}
+import { useSimulationStore } from '../../store/useSimulationStore';
 
 type ClickMode = 'target' | 'obstacle' | 'spawn_drone';
 
 interface ControlPanelProps {
-  params: ControlParams;
-  clickMode: ClickMode;
-  onParamChange: (key: keyof ControlParams, val: number) => void;
-  onClickModeChange: (mode: ClickMode) => void;
+  sendMessage: (msg: string) => void;
 }
 
-export default function ControlPanel({
-  params,
-  clickMode,
-  onParamChange,
-  onClickModeChange,
-}: ControlPanelProps) {
+export default function ControlPanel({ sendMessage }: ControlPanelProps) {
+  const params = useSimulationStore((s) => s.params);
+  const setParams = useSimulationStore((s) => s.setParams);
+  const clickMode = useSimulationStore((s) => s.clickMode);
+  const setClickMode = useSimulationStore((s) => s.setClickMode);
+  const activeGroup = useSimulationStore((s) => s.activeGroup);
+
+  const handleParamChange = (key: keyof typeof params, val: number) => {
+    setParams({ [key]: val });
+    sendMessage(
+      JSON.stringify({ topic: `cmd/fleet/${activeGroup}/control`, payload: { [key]: val } })
+    );
+  };
+
   return (
     <div className="space-y-6">
       <Slider
@@ -37,7 +36,7 @@ export default function ControlPanel({
         step={0.01}
         formatValue={(v) => `${v.toFixed(2)} km/s`}
         accentColor="accent-blue-500"
-        onChange={(v) => onParamChange('speed', v)}
+        onChange={(v) => handleParamChange('speed', v)}
       />
       <Slider
         label="Energy Drain"
@@ -47,28 +46,28 @@ export default function ControlPanel({
         step={0.001}
         formatValue={(v) => `${v.toFixed(3)}%/s`}
         accentColor="accent-red-500"
-        onChange={(v) => onParamChange('batteryDrain', v)}
+        onChange={(v) => handleParamChange('batteryDrain', v)}
       />
 
       <div className="pt-4 flex gap-2 border-t border-white/10">
         <Button
           variant="primary"
           active={clickMode === 'target'}
-          onClick={() => onClickModeChange('target')}
+          onClick={() => setClickMode('target')}
         >
           <Crosshair className="inline mr-2" size={14} /> Target
         </Button>
         <Button
           variant="danger"
           active={clickMode === 'obstacle'}
-          onClick={() => onClickModeChange('obstacle')}
+          onClick={() => setClickMode('obstacle')}
         >
           <PlusCircle className="inline mr-2" size={14} /> No-Fly
         </Button>
         <Button
           variant="success"
           active={clickMode === 'spawn_drone'}
-          onClick={() => onClickModeChange('spawn_drone')}
+          onClick={() => setClickMode('spawn_drone')}
         >
           <Navigation className="inline mr-2" size={14} /> Spawn
         </Button>

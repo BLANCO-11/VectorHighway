@@ -26,7 +26,7 @@ cmake --build .
 ./uav_sim
 ```
 
-The simulation starts on port **8080** by default. To use a different port:
+The simulation starts on port **7200** by default. To use a different port:
 ```sh
 ./uav_sim --port 7200
 # or

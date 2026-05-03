@@ -18,16 +18,6 @@
 
 using namespace std;
 
-struct DroneContext {
-    unique_ptr<UAV> uav;
-    Coordinate startCoord;
-    Coordinate targetCoord;
-    double assignedSpeed = 0.25;
-
-    DroneContext(unique_ptr<UAV> u, Coordinate s, Coordinate t, double spd = 0.25)
-        : uav(std::move(u)), startCoord(s), targetCoord(t), assignedSpeed(spd) {}
-};
-
 class ObstacleGenerator {
 public:
     ObstacleGenerator(double latMin, double latMax, double lonMin, double lonMax)
@@ -97,6 +87,7 @@ int main(int argc, char* argv[]) {
             auto cmds = context.drainCommands();
             for (const auto& cmd : cmds) {
                 if (cmd.type == "target") {
+                    cout << "[cmd] TARGET: id=" << cmd.targetId << " lat=" << cmd.lat << " lon=" << cmd.lon << endl;
                     Coordinate tgt(cmd.lat, cmd.lon, 0.0);
                     for (auto& pair : swarm) {
                         if (cmd.targetId == "all" || pair.second.uav->groupId == cmd.targetId || pair.first == cmd.targetId) {
@@ -152,6 +143,10 @@ int main(int argc, char* argv[]) {
                     ext.id, ext.groupId, ext.lat, ext.lon, ext.alt, ext.heading, ext.battery,
                     ext.lat, ext.lon, ext.lat, ext.lon
                 );
+                // Replace closing brace with isExternal flag and speed/status
+                stateJson.pop_back();
+                stateJson += ",\"speed\": " + std::to_string(ext.speed) +
+                    ",\"isExternal\": true,\"status\": \"" + ext.status + "\"}";
                 server.broadcast(stateJson);
             }
         }

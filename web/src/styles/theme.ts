@@ -1,0 +1,42 @@
+export const theme = {
+  colors: {
+    background: '#0a0a0f',
+    surface: '#1a1a2e',
+    surfaceLight: '#2a2a3e',
+    accent: '#00d4ff',
+    danger: '#ff3355',
+    success: '#00ff88',
+    warning: '#ffaa00',
+    caution: '#ff8800',
+    textPrimary: '#e0e0e0',
+    textSecondary: '#888899',
+    textMuted: '#555566',
+    border: 'rgba(255,255,255,0.05)',
+    borderLight: 'rgba(255,255,255,0.1)',
+    glassBg: 'rgba(0,0,0,0.4)',
+    glassBorder: 'rgba(255,255,255,0.08)',
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 24,
+    xxl: 32,
+  },
+  typography: {
+    fontFamily: 'Inter, system-ui, sans-serif',
+    fontFamilyMono: '"JetBrains Mono", "Geist Mono", monospace',
+    fontSizeXs: '10px',
+    fontSizeSm: '12px',
+    fontSizeMd: '14px',
+    fontSizeLg: '16px',
+    fontSizeXl: '20px',
+    fontSizeXxl: '24px',
+  },
+  glass: 'backdrop-blur-xl bg-black/40 border border-white/5 rounded-2xl shadow-2xl',
+  panel: 'backdrop-blur-xl bg-[#1a1a2e]/80 border border-white/5 rounded-xl shadow-lg',
+  transition: 'transition-all duration-200 ease-in-out',
+} as const;
+
+export type Theme = typeof theme;

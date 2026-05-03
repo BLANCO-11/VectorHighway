@@ -1,20 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050505;
-  --foreground: rgba(255, 255, 255, 0.9);
-  --surface: rgba(255, 255, 255, 0.03);
-  --border: rgba(255, 255, 255, 0.06);
-  --primary: #3b82f6;
-  --accent: #22d3ee;
-  --danger: #ef4444;
-  --success: #22c55e;
-  --text-secondary: rgba(255, 255, 255, 0.5);
+  --background: #0a0a0f;
+  --foreground: #e0e0e0;
+  --surface: #1a1a2e;
+  --accent: #00d4ff;
+  --danger: #ff3355;
+  --success: #00ff88;
+  --warning: #ffaa00;
+  --caution: #ff8800;
+  --text-secondary: #888899;
+  --border: rgba(255, 255, 255, 0.05);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-accent: #00d4ff;
+  --color-danger: #ff3355;
+  --color-success: #00ff88;
+  --color-warning: #ffaa00;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -22,20 +28,37 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Inter", "Geist", Arial, Helvetica, sans-serif;
 }
 
-/* Glassmorphism utility */
-.glass {
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 1rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+@layer utilities {
+  .glass {
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  }
+
+  .glass-panel {
+    background: rgba(26, 26, 46, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  }
+
+  .text-glow {
+    text-shadow: 0 0 10px currentColor;
+  }
+
+  .border-glow {
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
+  }
 }
 
-/* Custom scrollbar for dark theme */
 ::-webkit-scrollbar {
   width: 4px;
 }
@@ -46,23 +69,88 @@ body {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
 }
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
 
-/* Range slider styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   height: 14px;
   width: 14px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: #00d4ff;
   cursor: pointer;
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  margin-top: -5px;
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
 }
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
 input[type="range"]::-moz-range-thumb {
   height: 14px;
   width: 14px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: #00d4ff;
   cursor: pointer;
   border: none;
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
+}
+
+@keyframes radar-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-radar-sweep {
+  animation: radar-sweep 4s linear infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
 }

@@ -11,6 +11,7 @@ struct CommandEvent {
     double speed = -1.0;
     double drain = -1.0;
     std::string groupId;
+    std::string missionJson;
 };
 
 struct ExternalTelemetry {
@@ -21,4 +22,6 @@ struct ExternalTelemetry {
     double alt = 0.0;
     double heading = 0.0;
     double battery = 100.0;
+    double speed = 0.0;
+    std::string status = "FLYING";
 };

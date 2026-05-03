@@ -2,6 +2,8 @@
 
 #include "CommandEvent.h"
 #include "Types.h"
+#include "UAV.h"
+#include <memory>
 #include <mutex>
 #include <vector>
 #include <string>
@@ -11,6 +13,16 @@
 struct ExternalDroneState {
     ExternalTelemetry telemetry;
     std::chrono::steady_clock::time_point lastSeen;
+};
+
+struct DroneContext {
+    std::unique_ptr<UAV> uav;
+    Coordinate startCoord;
+    Coordinate targetCoord;
+    double assignedSpeed = 0.25;
+
+    DroneContext(std::unique_ptr<UAV> u, Coordinate s, Coordinate t, double spd = 0.25)
+        : uav(std::move(u)), startCoord(s), targetCoord(t), assignedSpeed(spd) {}
 };
 
 class SimulationContext {

@@ -99,3 +99,42 @@ public:
     ChargingStation(Coordinate pos, std::string n, double rate)
         : position(pos), name(n), chargingRate(rate) {}
 };
+
+enum class NoFlyZoneShape {
+    CIRCLE,
+    POLYGON
+};
+
+class NoFlyZone {
+public:
+    std::string id;
+    std::string name;
+    NoFlyZoneShape shape = NoFlyZoneShape::CIRCLE;
+    Coordinate center;
+    double radius = 0.0;
+    std::vector<Coordinate> vertices;
+    bool active = true;
+
+    NoFlyZone() = default;
+    NoFlyZone(const std::string& zoneId, const std::string& zoneName)
+        : id(zoneId), name(zoneName) {}
+
+    bool contains(const Coordinate& point) const {
+        if (shape == NoFlyZoneShape::CIRCLE) {
+            return point.distanceTo(center) <= radius;
+        }
+        if (vertices.size() < 3) return false;
+        bool inside = false;
+        size_t j = vertices.size() - 1;
+        for (size_t i = 0; i < vertices.size(); ++i) {
+            if ((vertices[i].longitude > point.longitude) != (vertices[j].longitude > point.longitude) &&
+                point.latitude < (vertices[j].latitude - vertices[i].latitude) *
+                (point.longitude - vertices[i].longitude) /
+                (vertices[j].longitude - vertices[i].longitude) + vertices[i].latitude) {
+                inside = !inside;
+            }
+            j = i;
+        }
+        return inside;
+    }
+};

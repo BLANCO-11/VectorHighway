@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VectorHighway — UAV Simulation Dashboard",
+  title: "VectorHighway — UAV Command Center",
   description:
     "Real-time 3D drone swarm simulation with WebSocket telemetry, collision avoidance, and interactive controls",
 };
@@ -28,7 +28,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col bg-[#0a0a0f] text-[#e0e0e0]">{children}</body>
     </html>
   );
 }
